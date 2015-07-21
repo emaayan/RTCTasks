@@ -106,7 +106,7 @@ public class RTCRepository extends BaseRepositoryImpl {
         };
     }
 
-    private RTCConnector getConnector() throws TeamRepositoryException {
+    private RTCConnector getConnector() throws TeamRepositoryException {//test
         final String username = getUsername();
         return RTCConnector.getConnector(getUrl(), username.split(REGEX)[0], getPassword(), getProjectArea());
     }
