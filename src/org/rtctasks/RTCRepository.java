@@ -3,6 +3,7 @@ package org.rtctasks;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.tasks.CustomTaskState;
 import com.intellij.tasks.Task;
 import com.intellij.tasks.TaskRepositoryType;
 import com.intellij.tasks.impl.BaseRepository;
@@ -14,6 +15,11 @@ import org.jetbrains.annotations.Nullable;
 import org.rtctasks.core.RTCConnector;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Created by exm1110B.
@@ -37,19 +43,58 @@ public class RTCRepository extends BaseRepositoryImpl {
         super(type);
     }
 
+    private final static ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool();
 
     @Override
     public Task[] getIssues(@Nullable final String query, final int offset, final int limit, final boolean withClosed, @NotNull final ProgressIndicator cancelled) throws Exception {
+        System.out.println("query is " + query);
+        return getTasksSync(query);
+        //return getTasksAsync(query);
+    }
+
+
+    @NotNull
+    @Override
+    public Set<CustomTaskState> getAvailableTaskStates(@NotNull final Task task) throws Exception {
+        final Set<CustomTaskState> availableTaskStates = super.getAvailableTaskStates(task);
+        return availableTaskStates;
+    }
+
+
+
+    private Task[] getTasksSync(final @Nullable String query) {
+        try{
+            return getTasks(query);
+        }catch (TeamRepositoryException e){
+            return Task.EMPTY_ARRAY;
+        }catch (Throwable e){
+            return Task.EMPTY_ARRAY;
+        }
+    }
+
+    private Task[] getTasksAsync(final @Nullable String query) {
+        try {
+            return EXECUTOR_SERVICE.submit(new Callable<Task[]>() {
+                @Override
+                public Task[] call() throws Exception {
+                    return getTasks(query);
+                }
+            }).get();
+        } catch (ExecutionException e) {
+            return Task.EMPTY_ARRAY;
+        } catch (InterruptedException e) {
+            return Task.EMPTY_ARRAY;
+        }
+    }
+
+    private Task[] getTasks(final @Nullable String query) throws TeamRepositoryException {
         final Task[] tasks;
+        final RTCConnector connector = getConnector();
         if (NumberUtils.isNumber(query)) {
-            final IWorkItem workItemBy = getConnector().getWorkItemBy(Integer.parseInt(query));
-            if (workItemBy != null) {
-                tasks = new Task[]{new RTCTask(workItemBy)};
-            } else {
-                tasks = RTCTask.createEmpty();
-            }
+            final IWorkItem workItemBy = connector.getWorkItemBy(Integer.parseInt(query));
+            tasks=workItemBy != null? new Task[]{new RTCTask(workItemBy)}: Task.EMPTY_ARRAY;
         } else {
-            final List<IWorkItem> workItemsBy = getConnector().getWorkItemsBy(query);
+            final List<IWorkItem> workItemsBy = connector.getWorkItemsBy(query);
             tasks = new Task[workItemsBy.size()];
             for (int i = 0; i < workItemsBy.size(); i++) {
                 tasks[i] = new RTCTask(workItemsBy.get(i));
