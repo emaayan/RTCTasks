@@ -4,11 +4,13 @@ import com.ibm.team.process.client.IProcessItemService;
 import com.ibm.team.process.common.IProjectArea;
 import com.ibm.team.process.common.IProjectAreaHandle;
 import com.ibm.team.repository.client.ITeamRepository;
+import com.ibm.team.repository.client.ITeamRepositoryService;
 import com.ibm.team.repository.client.TeamPlatform;
 import com.ibm.team.repository.common.IExtensibleItem;
 import com.ibm.team.repository.common.TeamRepositoryException;
-import com.ibm.team.repository.common.transport.TeamServiceException;
+import com.ibm.team.workitem.client.IQueryClient;
 import com.ibm.team.workitem.client.IWorkItemClient;
+import com.ibm.team.workitem.common.IAuditableCommon;
 import com.ibm.team.workitem.common.IQueryCommon;
 import com.ibm.team.workitem.common.expression.*;
 import com.ibm.team.workitem.common.model.AttributeOperation;
@@ -18,13 +20,16 @@ import com.ibm.team.workitem.common.model.ItemProfile;
 import com.ibm.team.workitem.common.query.IQueryResult;
 import com.ibm.team.workitem.common.query.IResolvedResult;
 import com.ibm.team.workitem.common.query.ResultSize;
-import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.log4j.Logger;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.rtctasks.RTCTask;
 
-import java.nio.channels.ClosedByInterruptException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by exm1110B.
@@ -32,15 +37,17 @@ import java.util.*;
  */
 public class RTCConnector {
 
-    private static final Map<String, RTCConnector> _conPool = new HashMap<String, RTCConnector>();
+    private final static Logger LOGGER=Logger.getLogger(RTCConnector.class);
+    private static final Map<String, RTCConnector> _conPool = new ConcurrentHashMap<String, RTCConnector>();
+    private final static ITeamRepositoryService teamRepositoryService;
     private final IWorkItemClient _workItemClient;
     private final IProjectArea _projectArea;
-    private IQueryableAttributeFactory _factory;
+    private final IQueryableAttributeFactory _factory;
 
 
     public static void main(String[] args) throws TeamRepositoryException {
         final String url = args[0];
-        final String user =  args[1];
+        final String user = args[1];
         final String pass = args[2];
         final String projectArea = args[3];
         final RTCConnector connector = getConnector(url, user, pass, projectArea);
@@ -68,13 +75,14 @@ public class RTCConnector {
 
     static {
         TeamPlatform.startup();
+        teamRepositoryService = TeamPlatform.getTeamRepositoryService();
     }
 
     static void close() {
         TeamPlatform.shutdown();
     }
 
-    public static RTCConnector getConnector(String url, String user, String pass, String projectArea) throws TeamRepositoryException {
+    public static synchronized   RTCConnector getConnector(String url, String user, String pass, String projectArea) throws TeamRepositoryException {
         final RTCConnector rtcConnector;
         if (!_conPool.containsKey(url + user + pass + projectArea)) {
             rtcConnector = new RTCConnector(url, user, pass, projectArea);
@@ -89,7 +97,7 @@ public class RTCConnector {
     private final IProcessItemService connect;
 
     public RTCConnector(final String url, final String username, final String password, String projectArea) throws TeamRepositoryException {
-        _repository = TeamPlatform.getTeamRepositoryService().getTeamRepository(url);
+        _repository = teamRepositoryService.getTeamRepository(url);
         _repository.registerLoginHandler(new ITeamRepository.ILoginHandler() {
             public ILoginInfo challenge(ITeamRepository repository) {
                 return new ILoginInfo() {
@@ -103,6 +111,7 @@ public class RTCConnector {
                 };
             }
         });
+        LOGGER.info("Connecting to repository");
         _repository.login(monitor);
         connect = (IProcessItemService) _repository.getClientLibrary(IProcessItemService.class);
         _workItemClient = (IWorkItemClient) _repository.getClientLibrary(IWorkItemClient.class);
@@ -119,7 +128,7 @@ public class RTCConnector {
         return monitor;
     }
 
-    private IProjectArea getProjectArea(String name) throws TeamRepositoryException {
+    private  IProjectArea getProjectArea(String name) throws TeamRepositoryException {
         final List<IProjectArea> allProjectAreas = connect.findAllProjectAreas(null, monitor);//TODO: wrap in an exception and get root cause, try again if InterruptedException
         for (IProjectArea projectArea : allProjectAreas) {
             if (projectArea.getName().equals(name)) {
@@ -129,75 +138,77 @@ public class RTCConnector {
         throw new RuntimeException("Project Area " + _projectArea + " Not found");
     }
 
-    public List<IWorkItem> getWorkItemsBy(String value) throws TeamRepositoryException {
-
-
+    public  List<IWorkItem> getWorkItemsBy(String value) throws TeamRepositoryException {
+        List<IWorkItem> matchingWorkItems;
         //        final IQueryableAttribute idAttribute = findAttribute(_projectArea, IWorkItem.ID_PROPERTY, monitor);
         //        final AttributeExpression idExpression = new AttributeExpression(idAttribute, AttributeOperation.EQUALS,Integer.parseInt(value));
+    //    try {
+            final IQueryableAttribute summeryAttribute = findAttribute(_projectArea, IWorkItem.SUMMARY_PROPERTY, monitor);
+            final AttributeExpression summeryExpression = new AttributeExpression(summeryAttribute, AttributeOperation.CONTAINS, value);
 
-        final IQueryableAttribute summeryAttribute = findAttribute(_projectArea, IWorkItem.SUMMARY_PROPERTY, monitor);
-        final AttributeExpression summeryExpression = new AttributeExpression(summeryAttribute, AttributeOperation.CONTAINS, value);
+            final IQueryableAttribute descriptionAttribute = findAttribute(_projectArea, IWorkItem.DESCRIPTION_PROPERTY, monitor);
+            final AttributeExpression descriptionExpression = new AttributeExpression(descriptionAttribute, AttributeOperation.CONTAINS, value);
 
-        final IQueryableAttribute descriptionAttribute = findAttribute(_projectArea, IWorkItem.DESCRIPTION_PROPERTY, monitor);
-        final AttributeExpression descriptionExpression = new AttributeExpression(descriptionAttribute, AttributeOperation.CONTAINS, value);
+            final IQueryableAttribute projectAreaAttribute = findAttribute(_projectArea, IWorkItem.PROJECT_AREA_PROPERTY, monitor);
+            final AttributeExpression projectAreaExpression = new AttributeExpression(projectAreaAttribute, AttributeOperation.EQUALS, _projectArea);
 
-        final IQueryableAttribute projectAreaAttribute = findAttribute(_projectArea, IWorkItem.PROJECT_AREA_PROPERTY, monitor);
-        final AttributeExpression projectAreaExpression = new AttributeExpression(projectAreaAttribute, AttributeOperation.EQUALS, _projectArea);
-
-        //        final Term term = new Term(Term.Operator.AND);
-        //        term.add(projectAreaExpression);
-        //        term.add(summeryExpression);
+            //        final Term term = new Term(Term.Operator.AND);
+            //        term.add(projectAreaExpression);
+            //        term.add(summeryExpression);
 
 
-        final Term term = new Term(Term.Operator.AND);
-        if (value != null && !value.isEmpty()) {
-            final Term termOr = new Term(Term.Operator.OR);
-            //   termOr.add(idExpression);
-            termOr.add(summeryExpression);
-            //    termOr.add(descriptionExpression);
-            term.add(termOr);
-        }
+            final Term term = new Term(Term.Operator.AND);
+            if (value != null && !value.isEmpty()) {
+                final Term termOr = new Term(Term.Operator.OR);
+                //   termOr.add(idExpression);
+                termOr.add(summeryExpression);
+                //    termOr.add(descriptionExpression);
+                term.add(termOr);
+            }
 
-        term.add(projectAreaExpression);
+            term.add(projectAreaExpression);
 
-        final IQueryCommon queryService = _workItemClient.getQueryClient();
-        final ItemProfile<IWorkItem> profile = IWorkItem.FULL_PROFILE;
-        final IQueryResult<IResolvedResult<IWorkItem>> result = queryService.getResolvedExpressionResults(_projectArea, term, profile);
+            final IQueryCommon queryService = _workItemClient.getQueryClient();
+            final ItemProfile<IWorkItem> profile = IWorkItem.FULL_PROFILE;
+            final IQueryResult<IResolvedResult<IWorkItem>> result = queryService.getResolvedExpressionResults(_projectArea, term, profile);
 
-        List<IWorkItem> matchingWorkItems = new ArrayList<IWorkItem>(0);
-        try {
             final ResultSize resultSize = result.getResultSize(monitor);
             final int totalAvailable = resultSize.getTotalAvailable();
-            matchingWorkItems=new ArrayList<IWorkItem>(totalAvailable);
+            matchingWorkItems = new ArrayList<IWorkItem>(totalAvailable);
             while (result.hasNext(monitor)) {
                 final IWorkItem item = result.next(monitor).getItem();
                 matchingWorkItems.add(item);
             }
-        } catch (TeamServiceException e) {
-            final Throwable rootCause = ExceptionUtils.getRootCause(e);
-            if (rootCause instanceof ClosedByInterruptException) {
-                System.out.println("Stopped query");
-            } else {
-                throw e;
-            }
-
-        }
+      //  } catch (TeamServiceException e) {
+//            final Throwable rootCause = ExceptionUtils.getRootCause(e);
+//            if (rootCause instanceof ClosedByInterruptException) {
+//                System.out.println("Stopped query");
+//                matchingWorkItems= new ArrayList<IWorkItem>(0);
+//                //PermissionDeniedException
+//            } else {
+//                System.out.println("another really error");
+//                throw e;
+//            }
+    //    }
         return matchingWorkItems;
     }
 
-    public IWorkItem getWorkItemBy(int id) throws TeamRepositoryException {
-        try {
+    public  IWorkItem getWorkItemBy(int id) throws TeamRepositoryException {
+    //    try {
             final IWorkItem workItemById = _workItemClient.findWorkItemById(id, IWorkItem.FULL_PROFILE, monitor);
             return workItemById;
-        } catch (TeamServiceException e) {
-            final Throwable rootCause = ExceptionUtils.getRootCause(e);
-            if (rootCause instanceof ClosedByInterruptException) {
-                System.out.println("Stopped query");
-                return null;
-            } else {
-                throw e;
-            }
-        }
+//        } catch (TeamServiceException e) {
+//            final Throwable rootCause = ExceptionUtils.getRootCause(e);
+//            if (rootCause instanceof ClosedByInterruptException) {
+//                System.out.println("Stopped query");
+//
+//                //PermissionDeniedException
+//                return null;
+//            } else {
+//                System.out.println("another error");
+//                throw e;
+//            }
+//        }
 
     }
 
@@ -215,7 +226,9 @@ public class RTCConnector {
     }
 
     private IQueryableAttribute findAttribute(IProjectAreaHandle projectArea, String attributeId, IProgressMonitor monitor) throws TeamRepositoryException {
-        return _factory.findAttribute(projectArea, attributeId, _workItemClient.getQueryClient().getAuditableCommon(), monitor);
+        final IQueryClient queryClient = _workItemClient.getQueryClient();
+        final IAuditableCommon auditableCommon = queryClient.getAuditableCommon();
+        return _factory.findAttribute(projectArea, attributeId, auditableCommon, monitor);
     }
 
     private ItemProfile<IWorkItem> getProfile(IQueryableAttribute attribute) {
