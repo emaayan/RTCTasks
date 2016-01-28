@@ -19,73 +19,7 @@ import java.util.Date;
 public class RTCTask extends Task {
     private final IWorkItem _iWorkItem;
 
-    public static Task[] createEmpty() {
-        return new Task[]{new Task() {
-            @NotNull
-            @Override
-            public String getId() {
-                return "";
-            }
 
-            @NotNull
-            @Override
-            public String getSummary() {
-                return "";
-            }
-
-            @Nullable
-            @Override
-            public String getDescription() {
-                return "";
-            }
-
-            @NotNull
-            @Override
-            public Comment[] getComments() {
-                return new Comment[0];
-            }
-
-
-            @Override
-            public Icon getIcon() {
-                return null;
-            }
-
-            @NotNull
-            @Override
-            public TaskType getType() {
-                return TaskType.BUG;
-            }
-
-            @Nullable
-            @Override
-            public Date getUpdated() {
-                return null;
-            }
-
-            @Nullable
-            @Override
-            public Date getCreated() {
-                return null;
-            }
-
-            @Override
-            public boolean isClosed() {
-                return false;
-            }
-
-            @Override
-            public boolean isIssue() {
-                return false;
-            }
-
-            @Nullable
-            @Override
-            public String getIssueUrl() {
-                return null;
-            }
-        }};
-    }
 
     public RTCTask(final IWorkItem iWorkItem) {
         _iWorkItem = iWorkItem;
@@ -112,7 +46,6 @@ public class RTCTask extends Task {
     @Override
     public String getSummary() {
         final StringBuffer sb = new StringBuffer(getId());
-        append(sb, _iWorkItem.getHTMLSummary().getPlainText());
         append(sb, getDescription());
         append(sb,_iWorkItem.getPriority().toString());
         append(sb, _iWorkItem.getSeverity().toString());
@@ -186,13 +119,15 @@ public class RTCTask extends Task {
 
     @Override
     public boolean isIssue() {
-        return false;
+        return _iWorkItem.getWorkItemType().contains("defect");
     }
 
     @Nullable
     @Override
     public String getIssueUrl() {
+        //https://jazz.net/forum/questions/13336/work-item-url#147114
         return "";
     }
+
 
 }
