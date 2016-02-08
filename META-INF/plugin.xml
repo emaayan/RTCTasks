@@ -2,7 +2,7 @@
   <name>RTCTasks</name>
   <id>org.rtctasks</id>
   <description>Tasks provider for bugzilla</description>
-  <version>1.0</version>
+  <version>1.2</version>
   <vendor email="elh.maayan@gmail.com" >Elhanan Maayan</vendor>
 
   <depends>com.intellij.tasks</depends>
