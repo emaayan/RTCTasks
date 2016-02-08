@@ -2,6 +2,7 @@ package org.rtctasks;
 
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.common.model.IWorkItem;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.tasks.CustomTaskState;
 import com.intellij.tasks.Task;
@@ -16,10 +17,6 @@ import org.rtctasks.core.RTCConnector;
 
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Created by exm1110B.
@@ -43,8 +40,6 @@ public class RTCRepository extends BaseRepositoryImpl {
         super(type);
     }
 
-    private final static ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool();
-
     @Override
     public Task[] getIssues(@Nullable final String query, final int offset, final int limit, final boolean withClosed, @NotNull final ProgressIndicator cancelled) throws Exception {
         System.out.println("query is " + query);
@@ -66,26 +61,13 @@ public class RTCRepository extends BaseRepositoryImpl {
         try{
             return getTasks(query);
         }catch (TeamRepositoryException e){
-            return Task.EMPTY_ARRAY;
+            throw new ProcessCanceledException(e);
+            //return Task.EMPTY_ARRAY;
         }catch (Throwable e){
-            return Task.EMPTY_ARRAY;
+            throw new ProcessCanceledException(e);
         }
     }
 
-    private Task[] getTasksAsync(final @Nullable String query) {
-        try {
-            return EXECUTOR_SERVICE.submit(new Callable<Task[]>() {
-                @Override
-                public Task[] call() throws Exception {
-                    return getTasks(query);
-                }
-            }).get();
-        } catch (ExecutionException e) {
-            return Task.EMPTY_ARRAY;
-        } catch (InterruptedException e) {
-            return Task.EMPTY_ARRAY;
-        }
-    }
 
     private Task[] getTasks(final @Nullable String query) throws TeamRepositoryException {
         final Task[] tasks;
