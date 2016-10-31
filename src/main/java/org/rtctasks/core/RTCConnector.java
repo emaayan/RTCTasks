@@ -14,25 +14,21 @@ import com.ibm.team.workitem.client.IQueryClient;
 import com.ibm.team.workitem.client.IWorkItemClient;
 import com.ibm.team.workitem.common.IAuditableCommon;
 import com.ibm.team.workitem.common.IQueryCommon;
+import com.ibm.team.workitem.common.IWorkItemCommon;
 import com.ibm.team.workitem.common.expression.*;
-import com.ibm.team.workitem.common.model.AttributeOperation;
-import com.ibm.team.workitem.common.model.IAttributeHandle;
-import com.ibm.team.workitem.common.model.IWorkItem;
-import com.ibm.team.workitem.common.model.ItemProfile;
+import com.ibm.team.workitem.common.model.*;
 import com.ibm.team.workitem.common.query.IQueryResult;
 import com.ibm.team.workitem.common.query.IResolvedResult;
 import com.ibm.team.workitem.common.query.ResultSize;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.tasks.impl.RequestFailedException;
+import com.intellij.util.ExceptionUtil;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.rtctasks.RTCTask;
 
 import java.nio.channels.ClosedByInterruptException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -49,6 +45,7 @@ public class RTCConnector {
     private final IWorkItemClient _workItemClient;
     private final IProjectArea _projectArea;
     private final IQueryableAttributeFactory _factory;
+    private final IWorkItemCommon _workItemCommon;
 
 
     public static void main(String[] args) throws TeamRepositoryException {
@@ -72,7 +69,7 @@ public class RTCConnector {
             for (IAttributeHandle customAttribute : customAttributes) {
 
             }
-            final RTCTask x = new RTCTask(jm);
+            final RTCTask x = new RTCTask(jm,null);
 
             System.out.println(x.getDescription());
         }
@@ -96,10 +93,9 @@ public class RTCConnector {
             } catch (AuthenticationException authenticationException) {
                 throw new RequestFailedException(authenticationException);
             } catch (TeamServiceException e) {
-                final Throwable cause = e.getCause();
-                if (cause instanceof ClosedByInterruptException) {
+                if (ExceptionUtil.causedBy(e,ClosedByInterruptException.class)){
                     throw new ProcessCanceledException(e);
-                } else {
+                }else{
                     throw new RequestFailedException(e);
                 }
             } catch (TeamRepositoryException e) {
@@ -114,7 +110,7 @@ public class RTCConnector {
     private final ITeamRepository _repository;
     private final IProgressMonitor monitor = new NullProgressMonitor();
     private final IProcessItemService connect;
-
+    private final Map<String,Map<Identifier<? extends ILiteral>,ILiteral>> literals=new ConcurrentHashMap<>();
     public RTCConnector(final String url, final String username, final String password, String projectArea) throws TeamRepositoryException {
         _repository = teamRepositoryService.getTeamRepository(url);
         _repository.registerLoginHandler(new ITeamRepository.ILoginHandler() {
@@ -134,13 +130,52 @@ public class RTCConnector {
         _repository.login(monitor);
         connect = (IProcessItemService) _repository.getClientLibrary(IProcessItemService.class);
         _workItemClient = (IWorkItemClient) _repository.getClientLibrary(IWorkItemClient.class);
+        _workItemCommon = (IWorkItemCommon) _repository.getClientLibrary(IWorkItemCommon.class);
         _factory = QueryableAttributes.getFactory(IWorkItem.ITEM_TYPE);
         _projectArea = getProjectArea(projectArea);
+   //     fillLiterals(IWorkItem.PRIORITY_PROPERTY);
+     //   fillLiterals(IWorkItem.SEVERITY_PROPERTY);
         //   final List<IQueryableAttribute> allAttributes = _factory.findAllAttributes(_projectArea, _workItemClient.getAuditableCommon(), monitor);
         //        for (IQueryableAttribute allAttribute : allAttributes) {
         //            final String displayName = allAttribute.getDisplayName();
         //            System.out.println(displayName+" "+allAttribute.getIdentifier());
         //        }
+    }
+
+
+    public Map<Identifier<? extends ILiteral>,ILiteral> getLiterals(String property) throws TeamRepositoryException {
+        final IEnumeration<? extends ILiteral> iEnumeration = getEnumerations(property);
+        final List<? extends ILiteral> enumerationLiterals = iEnumeration.getEnumerationLiterals();
+        final Map<Identifier<? extends ILiteral>,ILiteral > lits=new HashMap<>(enumerationLiterals.size());
+        for (ILiteral enumerationLiteral : enumerationLiterals) {
+            lits.put(enumerationLiteral.getIdentifier2(),enumerationLiteral);
+        }
+        return lits;
+    }
+
+    public IEnumeration<? extends ILiteral> getEnumerations(final String property) throws TeamRepositoryException {
+        final IAttribute attribute = _workItemCommon.findAttribute(_projectArea, property, monitor);
+        final IEnumeration<? extends ILiteral> iEnumeration = _workItemCommon.resolveEnumeration(attribute, monitor);
+        return iEnumeration;
+    }
+    public ILiteral getEnumeration(final String property,Identifier identifier)  {
+        final Map<Identifier<? extends ILiteral>, ILiteral> identifierILiteralMap = literals.computeIfAbsent(property, s -> {
+            try {
+                return getLiterals(s);
+            } catch (TeamRepositoryException e) {
+                if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
+                    return null;
+                } else {
+                    LOGGER.severe("Problem with getting " + property);
+                    return null;
+                }
+            }
+        });
+        if (identifierILiteralMap!=null){
+            return identifierILiteralMap.get(identifier);
+        }else{
+            return null;
+        }
     }
 
     public IProgressMonitor getMonitor() {
@@ -157,6 +192,7 @@ public class RTCConnector {
         }
         throw new RuntimeException("No Projects were found ");
     }
+
 
     public List<IWorkItem> getWorkItemsBy(String value) throws TeamRepositoryException {
         List<IWorkItem> matchingWorkItems;

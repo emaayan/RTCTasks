@@ -80,12 +80,12 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         if (isNumber(query)) {
             final int id = Integer.parseInt(query);
             final IWorkItem workItemBy = connector.getWorkItemBy(id);
-            tasks=new Task[]{new RTCTask(workItemBy)};
+            tasks=new Task[]{new RTCTask(workItemBy,this)};
         } else {
             final List<IWorkItem> workItemsBy = connector.getWorkItemsBy(query);
             tasks = new Task[workItemsBy.size()];
             for (int i = 0; i < workItemsBy.size(); i++) {
-                tasks[i] = new RTCTask(workItemsBy.get(i));
+                tasks[i] = new RTCTask(workItemsBy.get(i),this);
             }
 
         }
@@ -107,7 +107,7 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         final String id1 = RTCTask.getId(s);
         final int id = Integer.parseInt(id1);
         final IWorkItem workItemBy = getConnector().getWorkItemBy(id);
-        return new RTCTask(workItemBy);
+        return new RTCTask(workItemBy,this);
 //        return null;
     }
 
@@ -150,7 +150,7 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
 
     }
 
-    private RTCConnector getConnector() throws TeamRepositoryException {
+    public RTCConnector getConnector() {
         final String username = getUsername();
         return RTCConnector.getConnector(getUrl(), username.split(REGEX)[0], getPassword(), getProjectArea());
     }
