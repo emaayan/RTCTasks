@@ -14,11 +14,12 @@ import javax.swing.*;
  * Created by exm1110B.
  * Date: 17/07/2015, 14:53
  */
-public class RTCRepositoryType extends BaseRepositoryType<RTCRepository> {
+public class RTCTasksRepositoryType extends BaseRepositoryType<RTCTasksRepository>  {
+    public static final String NAME="RTCTasks";
     @NotNull
     @Override
     public String getName() {
-        return "RTCTasks";
+        return NAME;
     }
 
     @NotNull
@@ -31,22 +32,25 @@ public class RTCRepositoryType extends BaseRepositoryType<RTCRepository> {
     @NotNull
     @Override
     public TaskRepository createRepository() {
-        return new RTCRepository(this);
+        return new RTCTasksRepository(this);
     }
 
     @Override
-    public Class<RTCRepository> getRepositoryClass() {
-        return RTCRepository.class;
+    public Class<RTCTasksRepository> getRepositoryClass() {
+        return RTCTasksRepository.class;
     }
 
     @NotNull
     @Override
-    public TaskRepositoryEditor createEditor(final RTCRepository repository, final Project project, final Consumer<RTCRepository> changeListener) {
-        final Consumer<RTCRepository> myconsumer = new Consumer<RTCRepository>() {
-            public void consume(RTCRepository bugzillaTaskRepository) {
-                changeListener.consume(bugzillaTaskRepository);
+    public TaskRepositoryEditor createEditor(final RTCTasksRepository repository, final Project project, final Consumer<RTCTasksRepository> changeListener) {
+        final Consumer<RTCTasksRepository> myconsumer = new Consumer<RTCTasksRepository>() {
+            public void consume(RTCTasksRepository rtcTaskRepository) {
+                changeListener.consume(rtcTaskRepository);
             }
         };
-        return new BaseRepositoryEditor<RTCRepository>(project, repository, myconsumer);
+        return new BaseRepositoryEditor<RTCTasksRepository>(project, repository, myconsumer);
+    }
+    public void hello(){
+
     }
 }

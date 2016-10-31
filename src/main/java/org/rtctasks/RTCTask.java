@@ -5,7 +5,6 @@ import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.tasks.Comment;
 import com.intellij.tasks.Task;
 import com.intellij.tasks.TaskType;
-import org.apache.commons.lang.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,12 +31,17 @@ public class RTCTask extends Task {
     @NotNull
     @Override
     public String getId() {
-        return Integer.toString(_iWorkItem.getId());
+        if (_iWorkItem!=null) {
+            final int id = _iWorkItem.getId();
+            return Integer.toString(id);
+        }else{
+            return "";
+        }
     }
 
 
     private static void append(StringBuffer sb, String value) {
-        if (StringUtils.isNotEmpty(value)) {
+        if (value!=null && !value.isEmpty() ) {
             sb.append("@" + value);
         }
     }
@@ -47,45 +51,50 @@ public class RTCTask extends Task {
     public String getSummary() {
         final StringBuffer sb = new StringBuffer(getId());
         append(sb, getDescription());
-        append(sb,_iWorkItem.getPriority().toString());
-        append(sb, _iWorkItem.getSeverity().toString());
-
+        if (_iWorkItem!=null) {
+            append(sb, _iWorkItem.getPriority().toString());
+            append(sb, _iWorkItem.getSeverity().toString());
+        }
         return sb.toString();
     }
 
     @Nullable
     @Override
     public String getDescription() {
-        return _iWorkItem.getHTMLDescription().getPlainText();
+        return _iWorkItem!=null ?  _iWorkItem.getHTMLDescription().getPlainText():"";
     }
 
     @NotNull
     @Override
     public Comment[] getComments() {
-        final IComment[] contents = _iWorkItem.getComments().getContents();
-        final Comment[] comments = new Comment[contents.length];
-        for (int i = 0; i < contents.length; i++) {
-            final IComment content = contents[i];
-            comments[i] = new Comment() {
-                @Override
-                public String getText() {
-                    return content.getHTMLContent().getPlainText();
-                }
+        if (_iWorkItem!=null) {
+            final IComment[] contents = _iWorkItem.getComments().getContents();
+            final Comment[] comments = new Comment[contents.length];
+            for (int i = 0; i < contents.length; i++) {
+                final IComment content = contents[i];
+                comments[i] = new Comment() {
+                    @Override
+                    public String getText() {
+                        return content.getHTMLContent().getPlainText();
+                    }
 
-                @Nullable
-                @Override
-                public String getAuthor() {
-                    return content.getCreator().getItemId().toString();
-                }
+                    @Nullable
+                    @Override
+                    public String getAuthor() {
+                        return content.getCreator().getItemId().toString();
+                    }
 
-                @Nullable
-                @Override
-                public Date getDate() {
-                    return content.getCreationDate();
-                }
-            };
+                    @Nullable
+                    @Override
+                    public Date getDate() {
+                        return content.getCreationDate();
+                    }
+                };
+            }
+            return comments;
+        }else{
+            return new Comment[]{};
         }
-        return comments;
     }
 
 
@@ -103,13 +112,13 @@ public class RTCTask extends Task {
     @Nullable
     @Override
     public Date getUpdated() {
-        return _iWorkItem.getRequestedModified();
+        return _iWorkItem!=null ?  _iWorkItem.getRequestedModified():null;
     }
 
     @Nullable
     @Override
     public Date getCreated() {
-        return _iWorkItem.getCreationDate();
+        return _iWorkItem!=null ?  _iWorkItem.getCreationDate():null;
     }
 
     @Override
@@ -119,7 +128,7 @@ public class RTCTask extends Task {
 
     @Override
     public boolean isIssue() {
-        return _iWorkItem.getWorkItemType().contains("defect");
+        return _iWorkItem!=null ?  _iWorkItem.getWorkItemType().contains("defect") : false;
     }
 
     @Nullable

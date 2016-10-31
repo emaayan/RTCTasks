@@ -1,5 +1,7 @@
 package org.rtctasks;
 
+
+import com.ibm.team.repository.common.PermissionDeniedException;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -9,12 +11,13 @@ import com.intellij.tasks.Task;
 import com.intellij.tasks.TaskRepositoryType;
 import com.intellij.tasks.impl.BaseRepository;
 import com.intellij.tasks.impl.BaseRepositoryImpl;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.xmlb.annotations.Tag;
-import org.apache.commons.lang.NumberUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rtctasks.core.RTCConnector;
 
+import java.nio.channels.ClosedByInterruptException;
 import java.util.List;
 import java.util.Set;
 
@@ -22,28 +25,37 @@ import java.util.Set;
  * Created by exm1110B.
  * Date: 17/07/2015, 14:54
  */
-@Tag("RTCTasks")
-public class RTCRepository extends BaseRepositoryImpl {
+@Tag(RTCTasksRepositoryType.NAME)
+public class RTCTasksRepository extends BaseRepositoryImpl {
 
 
     public static final String REGEX = "\\|";
 
-    public RTCRepository() {
+    public RTCTasksRepository() {
         super();
     }
 
-    public RTCRepository(final RTCRepository rtcRepository) {
-        super(rtcRepository);
+    public RTCTasksRepository(final RTCTasksRepository rtcTasksRepository) {
+        super(rtcTasksRepository);
     }
 
-    public RTCRepository(final TaskRepositoryType type) {
+    public RTCTasksRepository(final TaskRepositoryType type) {
         super(type);
     }
 
     @Override
     public Task[] getIssues(@Nullable final String query, final int offset, final int limit, final boolean withClosed, @NotNull final ProgressIndicator cancelled) throws Exception {
-        System.out.println("query is " + query);
-        return getTasksSync(query);
+        RTCConnector.LOGGER.info("Query is "+query);
+        try{
+            final Task[] tasksSync = getTasksSync(query);
+            return tasksSync;
+        }catch (TeamRepositoryException e){
+            if (ExceptionUtil.causedBy(e,ClosedByInterruptException.class) || ExceptionUtil.causedBy(e,PermissionDeniedException.class)){
+                throw new ProcessCanceledException(e);
+            }else{
+                throw e;
+            }
+        }
         //return getTasksAsync(query);
     }
 
@@ -57,24 +69,18 @@ public class RTCRepository extends BaseRepositoryImpl {
 
 
 
-    private Task[] getTasksSync(final @Nullable String query) {
-        try{
-            return getTasks(query);
-        }catch (TeamRepositoryException e){
-            throw new ProcessCanceledException(e);
-            //return Task.EMPTY_ARRAY;
-        }catch (Throwable e){
-            throw new ProcessCanceledException(e);
-        }
+    private Task[] getTasksSync(final @Nullable String query) throws TeamRepositoryException {
+        return getTasks(query);
     }
 
 
     private Task[] getTasks(final @Nullable String query) throws TeamRepositoryException {
         final Task[] tasks;
         final RTCConnector connector = getConnector();
-        if (NumberUtils.isNumber(query)) {
-            final IWorkItem workItemBy = connector.getWorkItemBy(Integer.parseInt(query));
-            tasks=workItemBy != null? new Task[]{new RTCTask(workItemBy)}: Task.EMPTY_ARRAY;
+        if (isNumber(query)) {
+            final int id = Integer.parseInt(query);
+            final IWorkItem workItemBy = connector.getWorkItemBy(id);
+            tasks=new Task[]{new RTCTask(workItemBy)};
         } else {
             final List<IWorkItem> workItemsBy = connector.getWorkItemsBy(query);
             tasks = new Task[workItemsBy.size()];
@@ -86,6 +92,15 @@ public class RTCRepository extends BaseRepositoryImpl {
         return tasks;
     }
 
+    private boolean isNumber(final @Nullable String query) {
+        try{
+            Integer.parseInt(query);
+            return true;
+        }catch (NumberFormatException e){
+            return false;
+        }
+    }
+
     @Nullable
     @Override
     public Task findTask(@NotNull final String s) throws Exception {
@@ -93,12 +108,13 @@ public class RTCRepository extends BaseRepositoryImpl {
         final int id = Integer.parseInt(id1);
         final IWorkItem workItemBy = getConnector().getWorkItemBy(id);
         return new RTCTask(workItemBy);
+//        return null;
     }
 
     @NotNull
     @Override
     public BaseRepository clone() {
-        final RTCRepository cloned = new RTCRepository(this.getRepositoryType());
+        final RTCTasksRepository cloned = new RTCTasksRepository(this.getRepositoryType());
         cloned.setPassword(this.getPassword());
         cloned.setUrl(this.getUrl());
         cloned.setUsername(this.getUsername());
@@ -131,6 +147,7 @@ public class RTCRepository extends BaseRepositoryImpl {
                 }
             }
         };
+
     }
 
     private RTCConnector getConnector() throws TeamRepositoryException {
