@@ -46,12 +46,18 @@ public class RTCTask extends Task {
         }
     }
 
+    @Override
+    public String getPresentableName() {
+        return _iWorkItem!=null ? _iWorkItem.getHTMLSummary().getPlainText():"";
+    }
+
     @NotNull
     @Override
     public String getSummary() {
         final StringBuffer sb = new StringBuffer(getId());
-        append(sb, getDescription());
         if (_iWorkItem!=null) {
+            append(sb, getPresentableName());
+            append(sb, getDescription());
             append(sb, _iWorkItem.getPriority().toString());
             append(sb, _iWorkItem.getSeverity().toString());
         }
