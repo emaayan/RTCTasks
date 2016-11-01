@@ -1,7 +1,7 @@
 <idea-plugin version="2">
   <id>org.rtctasks</id>
   <name>RTCTasks</name>
-  <version>1.37</version>
+  <version>1.40</version>
   <vendor email="elh.maayan@gmail.com" >Elhanan Maayan</vendor>
 
   <description><![CDATA[
