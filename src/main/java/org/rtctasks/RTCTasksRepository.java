@@ -6,6 +6,7 @@ import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.tasks.CustomTaskState;
 import com.intellij.tasks.Task;
 import com.intellij.tasks.TaskRepositoryType;
@@ -37,6 +38,7 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
 
     public RTCTasksRepository(final RTCTasksRepository rtcTasksRepository) {
         super(rtcTasksRepository);
+        this.projectArea=rtcTasksRepository.getProjectArea();
     }
 
     public RTCTasksRepository(final TaskRepositoryType type) {
@@ -121,6 +123,7 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         cloned.setEncodedPassword(this.getEncodedPassword());
         cloned.setCommitMessageFormat(this.getCommitMessageFormat());
         cloned.setShared(this.isShared());
+        cloned.setProjectArea(getProjectArea());
         return cloned;
     }
 
@@ -156,11 +159,35 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
     }
 
     public String getProjectArea() {
-        final String[] split = getUsername().split(REGEX);
-        if (split.length > 1) {
-            return split[1];
-        } else {
-            return "";
-        }
+//        final String[] split = getUsername().split(REGEX);
+//        if (split.length > 1) {
+//            return split[1];
+//        } else {
+//            return "";
+//        }
+        return projectArea;
+    }
+    private String projectArea="";
+    public void setProjectArea(String projectArea){
+         this.projectArea=projectArea;
+    }
+    public boolean isConfigured() {
+        return super.isConfigured() && StringUtil.isNotEmpty(this.getUsername()) && StringUtil.isNotEmpty(this.getPassword());
+    }
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (!(o instanceof RTCTasksRepository)) return false;
+        if (!super.equals(o)) return false;
+
+        final RTCTasksRepository that = (RTCTasksRepository) o;
+
+        return getProjectArea() != null ? getProjectArea().equals(that.getProjectArea()) : that.getProjectArea() == null;
+
+    }
+
+    @Override
+    public int hashCode() {
+        return getProjectArea() != null ? getProjectArea().hashCode() : 0;
     }
 }

@@ -39,7 +39,7 @@ import java.util.logging.Logger;
  */
 public class RTCConnector {
 
-    public  final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
+    public final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
     private static final Map<String, RTCConnector> _conPool = new ConcurrentHashMap<>();
     private final static ITeamRepositoryService teamRepositoryService;
     private final IWorkItemClient _workItemClient;
@@ -69,7 +69,7 @@ public class RTCConnector {
             for (IAttributeHandle customAttribute : customAttributes) {
 
             }
-            final RTCTask x = new RTCTask(jm,null);
+            final RTCTask x = new RTCTask(jm, null);
 
             System.out.println(x.getDescription());
         }
@@ -93,9 +93,9 @@ public class RTCConnector {
             } catch (AuthenticationException authenticationException) {
                 throw new RequestFailedException(authenticationException);
             } catch (TeamServiceException e) {
-                if (ExceptionUtil.causedBy(e,ClosedByInterruptException.class)){
+                if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
                     throw new ProcessCanceledException(e);
-                }else{
+                } else {
                     throw new RequestFailedException(e);
                 }
             } catch (TeamRepositoryException e) {
@@ -103,6 +103,19 @@ public class RTCConnector {
             }
         } else {
             rtcConnector = _conPool.get(url + user + pass + projectArea);
+            try {
+                rtcConnector.checkLogin();
+            } catch (AuthenticationException authenticationException) {
+                throw new RequestFailedException(authenticationException);
+            } catch (TeamServiceException e) {
+                if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
+                    throw new ProcessCanceledException(e);
+                } else {
+                    throw new RequestFailedException(e);
+                }
+            } catch (TeamRepositoryException e) {
+                throw new RequestFailedException(e);
+            }
         }
         return rtcConnector;
     }
@@ -110,7 +123,35 @@ public class RTCConnector {
     private final ITeamRepository _repository;
     private final IProgressMonitor monitor = new NullProgressMonitor();
     private final IProcessItemService connect;
-    private final Map<String,Map<Identifier<? extends ILiteral>,ILiteral>> literals=new ConcurrentHashMap<>();
+    private final Map<String, Map<Identifier<? extends ILiteral>, ILiteral>> literals = new ConcurrentHashMap<>();
+
+    public static List<IProjectArea> getAllProject(final String url, final String username, final String password) throws TeamRepositoryException {
+        final ITeamRepository teamRepository = teamRepositoryService.getTeamRepository(url);
+
+        teamRepository.registerLoginHandler(new ITeamRepository.ILoginHandler() {
+            public ILoginInfo challenge(ITeamRepository repository) {
+                return new ILoginInfo() {
+                    public String getUserId() {
+                        return username;
+                    }
+
+                    public String getPassword() {
+                        return password;
+                    }
+                };
+            }
+        });
+        LOGGER.info("Connecting to repository");
+        final NullProgressMonitor iProgressMonitor = new NullProgressMonitor();
+        teamRepository.login(iProgressMonitor);
+        final IProcessItemService clientLibrary = (IProcessItemService) teamRepository.getClientLibrary(IProcessItemService.class);
+        final List<IProjectArea> allProjectAreas = clientLibrary.findAllProjectAreas(null, iProgressMonitor);
+        teamRepository.logout();
+
+        return allProjectAreas;
+    }
+
+
     public RTCConnector(final String url, final String username, final String password, String projectArea) throws TeamRepositoryException {
         _repository = teamRepositoryService.getTeamRepository(url);
         _repository.registerLoginHandler(new ITeamRepository.ILoginHandler() {
@@ -129,26 +170,32 @@ public class RTCConnector {
         LOGGER.info("Connecting to repository");
         _repository.login(monitor);
         connect = (IProcessItemService) _repository.getClientLibrary(IProcessItemService.class);
+        _projectArea = getProjectArea(projectArea);
         _workItemClient = (IWorkItemClient) _repository.getClientLibrary(IWorkItemClient.class);
         _workItemCommon = (IWorkItemCommon) _repository.getClientLibrary(IWorkItemCommon.class);
         _factory = QueryableAttributes.getFactory(IWorkItem.ITEM_TYPE);
-        _projectArea = getProjectArea(projectArea);
-   //     fillLiterals(IWorkItem.PRIORITY_PROPERTY);
-     //   fillLiterals(IWorkItem.SEVERITY_PROPERTY);
+
         //   final List<IQueryableAttribute> allAttributes = _factory.findAllAttributes(_projectArea, _workItemClient.getAuditableCommon(), monitor);
         //        for (IQueryableAttribute allAttribute : allAttributes) {
         //            final String displayName = allAttribute.getDisplayName();
         //            System.out.println(displayName+" "+allAttribute.getIdentifier());
         //        }
+
+
     }
 
+    public void checkLogin() throws TeamRepositoryException {
+        if (!_repository.loggedIn()) {
+            _repository.login(monitor);
+        }
+    }
 
-    public Map<Identifier<? extends ILiteral>,ILiteral> getLiterals(String property) throws TeamRepositoryException {
+    public Map<Identifier<? extends ILiteral>, ILiteral> getLiterals(String property) throws TeamRepositoryException {
         final IEnumeration<? extends ILiteral> iEnumeration = getEnumerations(property);
         final List<? extends ILiteral> enumerationLiterals = iEnumeration.getEnumerationLiterals();
-        final Map<Identifier<? extends ILiteral>,ILiteral > lits=new HashMap<>(enumerationLiterals.size());
+        final Map<Identifier<? extends ILiteral>, ILiteral> lits = new HashMap<>(enumerationLiterals.size());
         for (ILiteral enumerationLiteral : enumerationLiterals) {
-            lits.put(enumerationLiteral.getIdentifier2(),enumerationLiteral);
+            lits.put(enumerationLiteral.getIdentifier2(), enumerationLiteral);
         }
         return lits;
     }
@@ -158,7 +205,8 @@ public class RTCConnector {
         final IEnumeration<? extends ILiteral> iEnumeration = _workItemCommon.resolveEnumeration(attribute, monitor);
         return iEnumeration;
     }
-    public ILiteral getEnumeration(final String property,Identifier identifier)  {
+
+    public ILiteral getEnumeration(final String property, Identifier identifier) {
         final Map<Identifier<? extends ILiteral>, ILiteral> identifierILiteralMap = literals.computeIfAbsent(property, s -> {
             try {
                 return getLiterals(s);
@@ -171,15 +219,20 @@ public class RTCConnector {
                 }
             }
         });
-        if (identifierILiteralMap!=null){
+        if (identifierILiteralMap != null) {
             return identifierILiteralMap.get(identifier);
-        }else{
+        } else {
             return null;
         }
     }
 
     public IProgressMonitor getMonitor() {
         return monitor;
+    }
+
+    public List<IProjectArea> getProjectsAreas() throws TeamRepositoryException {
+        final List<IProjectArea> allProjectAreas = connect.findAllProjectAreas(null, monitor);
+        return allProjectAreas;
     }
 
     private IProjectArea getProjectArea(String name) throws TeamRepositoryException {

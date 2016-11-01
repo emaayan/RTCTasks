@@ -2,7 +2,6 @@ package org.rtctasks;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.tasks.TaskRepository;
-import com.intellij.tasks.config.BaseRepositoryEditor;
 import com.intellij.tasks.config.TaskRepositoryEditor;
 import com.intellij.tasks.impl.BaseRepositoryType;
 import com.intellij.util.Consumer;
@@ -43,14 +42,9 @@ public class RTCTasksRepositoryType extends BaseRepositoryType<RTCTasksRepositor
     @NotNull
     @Override
     public TaskRepositoryEditor createEditor(final RTCTasksRepository repository, final Project project, final Consumer<RTCTasksRepository> changeListener) {
-        final Consumer<RTCTasksRepository> myconsumer = new Consumer<RTCTasksRepository>() {
-            public void consume(RTCTasksRepository rtcTaskRepository) {
-                changeListener.consume(rtcTaskRepository);
-            }
-        };
-        return new BaseRepositoryEditor<RTCTasksRepository>(project, repository, myconsumer);
+//        final Consumer<RTCTasksRepository> myconsumer = rtcTaskRepository -> changeListener.consume(rtcTaskRepository);
+//        return new BaseRepositoryEditor<>(project, repository, myconsumer);
+        return new RTCTasksRepositoryEditor(project, repository, changeListener);
     }
-    public void hello(){
 
-    }
 }
