@@ -1,7 +1,9 @@
 package org.rtctasks;
 
+import com.ibm.team.foundation.common.text.XMLString;
 import com.ibm.team.process.common.IProjectArea;
 import com.ibm.team.repository.client.internal.TeamRepository;
+import com.ibm.team.repository.common.IContributorHandle;
 import com.ibm.team.repository.common.Location;
 import com.ibm.team.workitem.common.model.IComment;
 import com.ibm.team.workitem.common.model.IWorkItem;
@@ -101,13 +103,16 @@ public class RTCTask extends Task {
                 comments[i] = new Comment() {
                     @Override
                     public String getText() {
-                        return content.getHTMLContent().getPlainText();
+                        final XMLString htmlContent = content.getHTMLContent();
+                        return htmlContent.getPlainText();
                     }
 
                     @Nullable
                     @Override
                     public String getAuthor() {
-                        return content.getCreator().getItemId().toString();
+                        final IContributorHandle creator = content.getCreator();
+                        final String contributorName = RTCTask.this._rtcConnector.getContributorName(creator);
+                        return contributorName;
                     }
 
                     @Nullable

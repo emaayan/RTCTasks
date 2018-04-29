@@ -17,13 +17,18 @@ import org.jetbrains.annotations.Nullable;
 import org.rtctasks.core.RTCConnector;
 
 import java.nio.channels.ClosedByInterruptException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 //https://intellij-support.jetbrains.com/hc/en-us/community/posts/207098975-Documenation-about-Task-Api
 //https://rsjazz.wordpress.com/2015/03/31/the-work-item-time-tracking-api/
-//https://rsjazz.wordpress.com/2012/07/31/rtc-update-parent-duration-estimation-and-effort-participant/
+//https://rsjazz.wordpress.com/2012/07/31/rtc-update-parent-duration-estimation-and-effort-participant//
+//https://jazz.net/library/article/1229
+
 /**
  * Created by exm1110B.
  * Date: 17/07/2015, 14:54
@@ -31,7 +36,7 @@ import java.util.logging.Logger;
 @Tag(RTCTasksRepositoryType.NAME)
 public class RTCTasksRepository extends BaseRepositoryImpl {
     public final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
-
+    public static final Pattern TIME_SPENT_PATTERN = Pattern.compile("([0-9]+)d ([0-9]+)h ([0-9]+)m");
     public static final String REGEX = "\\|";
     private String projectArea;
 
@@ -168,9 +173,10 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
     @Override
     protected int getFeatures() {
         final int features = super.getFeatures()
-              //  | TaskRepository.TIME_MANAGEMENT | TaskRepository.STATE_UPDATING
-         
-        ;
+                | TaskRepository.TIME_MANAGEMENT
+                // | TaskRepository.STATE_UPDATING
+
+                ;
         return features;
     }
 
@@ -183,7 +189,47 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
 
     @Override  //TaskRepository.TIME_MANAGEMENT
     public void updateTimeSpent(@NotNull LocalTask task, @NotNull String timeSpent, @NotNull String comment) throws Exception {
-        super.updateTimeSpent(task, timeSpent, comment);
+        //super.updateTimeSpent(task, timeSpent, comment);
+        final String number = task.getNumber();
+        final RTCConnector connector = getConnector();
+        final IWorkItem jazzWorkItemById = connector.getJazzWorkItemById(Integer.parseInt(number));
+        final Duration duration = matchDuration(timeSpent);
+        connector.updateTimeSpent(jazzWorkItemById,duration.toMillis(),comment);
+        
+    }
+
+    public static  Duration matchDuration(@NotNull String timeSpent) {
+        final StringTokenizer stringTokenizer=new StringTokenizer(timeSpent," ");
+        final StringBuffer stringBuffer=new StringBuffer("P");
+        
+        boolean startTime=false;
+        while(stringTokenizer.hasMoreTokens()){
+            final String s1 = stringTokenizer.nextToken();
+            final String s = s1.toUpperCase();
+            if (s.endsWith("D")){
+                stringBuffer.append(s);
+                if (!startTime && stringTokenizer.hasMoreTokens()){
+                    stringBuffer.append("T");
+                    startTime=true;
+                }
+            }else{
+                if (!startTime){
+                    stringBuffer.append("T");
+                    startTime=true;
+                }
+                stringBuffer.append(s);
+            }
+        }
+
+        final Duration parse = Duration.parse(stringBuffer);
+        return parse;
+    }
+
+    public static  Duration parseDuration(int days, int hours, int minutes) {
+        //P2DT3H4M
+        String durationPattern=String.format("P%dDT%dH%dM",days,hours,minutes);
+        final Duration parse = Duration.parse(durationPattern);
+        return parse;
     }
 
 

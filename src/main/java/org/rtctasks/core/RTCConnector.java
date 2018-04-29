@@ -1,17 +1,24 @@
 package org.rtctasks.core;
 
+import com.ibm.team.foundation.common.text.XMLString;
 import com.ibm.team.process.client.IProcessItemService;
 import com.ibm.team.process.common.IProjectArea;
 import com.ibm.team.process.common.IProjectAreaHandle;
+import com.ibm.team.repository.client.IItemManager;
 import com.ibm.team.repository.client.ITeamRepository;
 import com.ibm.team.repository.client.ITeamRepositoryService;
 import com.ibm.team.repository.client.TeamPlatform;
+import com.ibm.team.repository.client.internal.ItemManager;
+import com.ibm.team.repository.common.IContributor;
+import com.ibm.team.repository.common.IContributorHandle;
 import com.ibm.team.repository.common.IExtensibleItem;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.repository.common.transport.TeamServiceException;
 import com.ibm.team.repository.transport.client.AuthenticationException;
 import com.ibm.team.workitem.client.IQueryClient;
 import com.ibm.team.workitem.client.IWorkItemClient;
+import com.ibm.team.workitem.client.IWorkItemWorkingCopyManager;
+import com.ibm.team.workitem.client.WorkItemWorkingCopy;
 import com.ibm.team.workitem.common.IAuditableCommon;
 import com.ibm.team.workitem.common.IQueryCommon;
 import com.ibm.team.workitem.common.expression.*;
@@ -56,6 +63,9 @@ public class RTCConnector {
     }
 
     private final Set<CustomTaskState> taskStates;
+    private final IItemManager iItemManager;
+    private final IWorkItemWorkingCopyManager workItemWorkingCopyManager;
+    private final IContributor loggedInContributor;
 
 
     static void close() {
@@ -151,8 +161,9 @@ public class RTCConnector {
         _projectArea = getProjectArea(projectArea);
 
         _workItemClient = (IWorkItemClient) _repository.getClientLibrary(IWorkItemClient.class);
-
-        
+        workItemWorkingCopyManager = _workItemClient.getWorkItemWorkingCopyManager();
+        iItemManager = _repository.itemManager();
+        loggedInContributor = _repository.loggedInContributor();
         workItemTypes = _workItemClient.findWorkItemTypes(_projectArea, monitor);
 
         taskTypeMapper.put("defect", TaskType.BUG);
@@ -163,17 +174,17 @@ public class RTCConnector {
         taskStates = new HashSet<>();
         for (IWorkItemType workItemType : workItemTypes) {
             final String workItemId = workItemType.getIdentifier();
-          //  LOGGER.info("work item types" + identifier);
+            //  LOGGER.info("work item types" + identifier);
             final IWorkflowInfo workFlowInfo = _workItemClient.getWorkflow(workItemId, _projectArea, monitor);
             final Identifier<IState>[] allStateIds = workFlowInfo.getAllStateIds();
             for (Identifier<IState> stateId : allStateIds) {
                 final String stringIdentifier = stateId.getStringIdentifier();
                 final String stateName = workFlowInfo.getStateName(stateId);
-                final CustomTaskState customTaskState=new CustomTaskState(stringIdentifier,stateName);
+                final CustomTaskState customTaskState = new CustomTaskState(stringIdentifier, stateName);
                 taskStates.add(customTaskState);
             }
         }
-        LOGGER.info("Got task states "+taskStates);
+        LOGGER.info("Got task states " + taskStates);
 
         final Identifier<IState>[] allUnresolvedStates = getAllUnresolvedStates();
         if (allUnresolvedStates != null) {
@@ -194,6 +205,60 @@ public class RTCConnector {
     public TaskType getTaskType(IWorkItem iWorkItem) {
         final String workItemType = iWorkItem.getWorkItemType();
         return taskTypeMapper.getOrDefault(workItemType, TaskType.OTHER);
+    }
+
+    public IContributor getContributor(IContributorHandle iContributorHandle, String... properties) throws TeamRepositoryException {
+        final IContributor iItem = (IContributor) iItemManager.fetchPartialItem(iContributorHandle, ItemManager.DEFAULT, Arrays.asList(properties), monitor);
+        return iItem;
+    }
+
+    @FunctionalInterface
+    public static interface WorkItemUpdater {
+        public void execute(IWorkItem iWorkItem) throws TeamRepositoryException;
+    }
+
+    public void updateWorkItem(IWorkItem iWorkItem, WorkItemUpdater iWorkItemConsumer) throws TeamRepositoryException {
+        try {
+            workItemWorkingCopyManager.connect(iWorkItem, IWorkItem.DEFAULT_PROFILE, monitor);
+            final WorkItemWorkingCopy workingCopy = workItemWorkingCopyManager.getWorkingCopy(iWorkItem);
+            final IWorkItem workItem = workingCopy.getWorkItem();
+            iWorkItemConsumer.execute(workItem);
+            workItemWorkingCopyManager.save(new WorkItemWorkingCopy[]{workingCopy}, new NullProgressMonitor());
+        } finally {
+            workItemWorkingCopyManager.disconnect(iWorkItem);
+        }
+    }
+
+    public void updateTimeSpent(IWorkItem iWorkItem, long timeInMs, String comment) throws TeamRepositoryException {
+        updateWorkItem(iWorkItem, iWorkItem1 -> {
+            final IAttribute attrIimeSpent = _workItemClient.findAttribute(iWorkItem1.getProjectArea(), "timeSpent", null);
+            iWorkItem1.setValue(attrIimeSpent, timeInMs);
+            if (comment!=null && !comment.isEmpty()) {
+                appendComment(comment, iWorkItem1);
+            }
+        });
+    }
+
+    public void addComment(IWorkItem iWorkItem, String comment) throws TeamRepositoryException {
+        updateWorkItem(iWorkItem, iWorkItem1 -> {
+            appendComment(comment, iWorkItem1);
+        });
+    }
+
+    private void appendComment(String comment, IWorkItem iWorkItem1) {
+        final XMLString fromPlainText = XMLString.createFromPlainText(comment);
+        final IComment iComment = iWorkItem1.getComments().createComment(loggedInContributor, fromPlainText);
+        iWorkItem1.getComments().append(iComment);
+    }
+
+    public String getContributorName(IContributorHandle iContributorHandle, String... properties) {
+        try {
+            final IContributor name = getContributor(iContributorHandle, "Name");
+            return name != null ? name.getName() : "";
+        } catch (TeamRepositoryException e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, e, () -> "Failed to find contributor ");
+            return "";
+        }
     }
 
     public IWorkItemType getWorkItemType(String workItemTypeId) {
