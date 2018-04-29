@@ -1,11 +1,16 @@
 package org.rtctasks;
 
+import com.ibm.team.process.common.IProjectArea;
+import com.ibm.team.repository.client.internal.TeamRepository;
+import com.ibm.team.repository.common.Location;
 import com.ibm.team.workitem.common.model.IComment;
-import com.ibm.team.workitem.common.model.ILiteral;
 import com.ibm.team.workitem.common.model.IWorkItem;
+import com.ibm.team.workitem.common.model.IWorkItemType;
 import com.intellij.tasks.Comment;
 import com.intellij.tasks.Task;
+import com.intellij.tasks.TaskState;
 import com.intellij.tasks.TaskType;
+import icons.TasksCoreIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rtctasks.core.RTCConnector;
@@ -19,11 +24,11 @@ import java.util.Date;
  */
 public class RTCTask extends Task {
     private final IWorkItem _iWorkItem;
-    private final RTCTasksRepository _rtcTasksRepository;
+    private final RTCConnector _rtcConnector;
 
-    public RTCTask(final IWorkItem iWorkItem,RTCTasksRepository rtcTasksRepository) {
+    public RTCTask(final IWorkItem iWorkItem, RTCConnector rtcConnector) {
         _iWorkItem = iWorkItem;
-        _rtcTasksRepository= rtcTasksRepository;
+        this._rtcConnector = rtcConnector;
     }
 
     public static String getId(String name) {
@@ -48,21 +53,27 @@ public class RTCTask extends Task {
         }
     }
 
+    @NotNull
+    @Override
+    public String getPresentableId() {
+        if (_iWorkItem != null) {
+            final IWorkItemType workItemType = getItemType();
+            if (workItemType != null) {
+                return workItemType.getDisplayName() + " " + getId();
+            } else {
+                return getId();
+            }
+        } else {
+            return getId();
+        }
+    }
+
     @Override
     public String getPresentableName() {
-        final StringBuffer sb = new StringBuffer(getId());
+        final StringBuffer sb = new StringBuffer(getPresentableId());
         if (_iWorkItem != null) {
-            append(sb, getSummary());
-
-            final RTCConnector connector = _rtcTasksRepository.getConnector();
-            final ILiteral priority= connector.getEnumeration(IWorkItem.PRIORITY_PROPERTY,_iWorkItem.getPriority());
-            if (priority!=null) {
-                append(sb, priority.getName());
-            }
-            final ILiteral severity= connector.getEnumeration(IWorkItem.SEVERITY_PROPERTY,_iWorkItem.getSeverity());
-            if (severity!=null) {
-                append(sb, severity.getName());
-            }
+            //append(sb, getSummary());
+            sb.append(" ").append(getSummary());
         }
         return sb.toString();
     }
@@ -112,16 +123,50 @@ public class RTCTask extends Task {
         }
     }
 
-
+    @NotNull
     @Override
     public Icon getIcon() {
-        return null;
+        final TaskType type = getType();
+        switch (type) {
+            case BUG:
+                return TasksCoreIcons.Bug;
+            case FEATURE:
+                return TasksCoreIcons.Feature;
+            default:
+                return TasksCoreIcons.Clock;
+        }
     }
+
+    public String getWorkItemType() {
+        return _iWorkItem != null ? _iWorkItem.getWorkItemType() : "";
+    }
+
+    public IWorkItemType getItemType() {
+        final String workItemType = getWorkItemType();
+        return _rtcConnector.getWorkItemType(workItemType);
+    }
+
+    /*
+    @Nullable
+    @Override
+    public String getCustomIcon() {
+        if (_iWorkItem != null) {
+            final IWorkItemType itemType = getItemType();
+            if (itemType != null) {
+                final URL iconURL = itemType.getIconURL();
+                return iconURL.toString();
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
+    } */
 
     @NotNull
     @Override
     public TaskType getType() {
-        return TaskType.BUG;   //TODO: work by itemType
+        return _iWorkItem != null ? _rtcConnector.getTaskType(_iWorkItem) : TaskType.OTHER;
     }
 
     @Nullable
@@ -136,27 +181,44 @@ public class RTCTask extends Task {
         return _iWorkItem != null ? _iWorkItem.getCreationDate() : null;
     }
 
+    @Nullable
+    @Override
+    public TaskState getState() {
+        return _iWorkItem != null ? _rtcConnector.getTaskState(_iWorkItem) : TaskState.OTHER;
+    }
+
     @Override
     public boolean isClosed() {
-        return false;
+        return _iWorkItem != null && !_rtcConnector.isOpen(_iWorkItem);
     }
 
     @Override
     public boolean isIssue() {
-        return _iWorkItem != null ? _iWorkItem.getWorkItemType().contains("defect") : false;
+        return true;
+    }
+
+    @Nullable
+    @Override
+    public String getProject() {
+        final IProjectArea projectArea = _rtcConnector.getProjectArea();
+        if (projectArea != null) {
+            final String name = projectArea.getName();
+            return name;
+        } else {
+            return super.getProject();
+        }
     }
 
     @Nullable
     @Override
     public String getIssueUrl() {
-        //https://jazz.net/forum/questions/13336/work-item-url#147114
-        if (_iWorkItem!=null) {
-            final int id = _iWorkItem.getId();
-            final String url = _rtcTasksRepository.getUrl();
-            final String projectArea = _rtcTasksRepository.getProjectArea();
-            final String s = url + "/web/projects/" + projectArea + "#" + "action=com.ibm.team.workitem.viewWorkItem&id=" + id;
+        if (_iWorkItem != null) {
+            final TeamRepository origin = (TeamRepository) _iWorkItem.getOrigin();
+            final String repositoryURI = origin.getRepositoryURI();
+            final Location location = Location.namedLocation(_iWorkItem, repositoryURI);
+            final String s = location.toString();
             return s;
-        }else{
+        } else {
             return "";
         }
     }

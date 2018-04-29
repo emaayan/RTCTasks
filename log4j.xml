@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+	<appender class="org.apache.log4j.ConsoleAppender" name="Console">
+		<param name="Target" value="System.out" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern"
+				value="%d %-5p %c{1} - %m%n" />
+		</layout>
+	</appender>
+	<appender class="org.apache.log4j.RollingFileAppender"
+		name="FileAppender">
+		<param name="file" value="RTCTasks.log" />
+		<param name="MaxFileSize" value="10000KB" />
+		<param name="MaxBackupIndex" value="10" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern"
+				value="%d %-5p %c{1} - %m%n" />
+		</layout>
+	</appender>
+
+	<logger name="io.netty">
+		<level value="debug" />
+		<appender-ref ref="Console" />
+	</logger>
+	<root>
+		<level value="debug" />
+		<appender-ref ref="Console" />
+		<appender-ref ref="FileAppender" />
+	</root>
+</log4j:configuration>

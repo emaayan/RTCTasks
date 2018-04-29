@@ -7,9 +7,7 @@ import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.tasks.CustomTaskState;
-import com.intellij.tasks.Task;
-import com.intellij.tasks.TaskRepositoryType;
+import com.intellij.tasks.*;
 import com.intellij.tasks.impl.BaseRepository;
 import com.intellij.tasks.impl.BaseRepositoryImpl;
 import com.intellij.util.ExceptionUtil;
@@ -21,54 +19,64 @@ import org.rtctasks.core.RTCConnector;
 import java.nio.channels.ClosedByInterruptException;
 import java.util.List;
 import java.util.Set;
-
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
+//https://intellij-support.jetbrains.com/hc/en-us/community/posts/207098975-Documenation-about-Task-Api
+//https://rsjazz.wordpress.com/2015/03/31/the-work-item-time-tracking-api/
+//https://rsjazz.wordpress.com/2012/07/31/rtc-update-parent-duration-estimation-and-effort-participant/
 /**
  * Created by exm1110B.
  * Date: 17/07/2015, 14:54
  */
 @Tag(RTCTasksRepositoryType.NAME)
 public class RTCTasksRepository extends BaseRepositoryImpl {
-
+    public final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
 
     public static final String REGEX = "\\|";
+    private String projectArea;
 
     public RTCTasksRepository() {
         super();
-    }
-
-    public RTCTasksRepository(final RTCTasksRepository rtcTasksRepository) {
-        super(rtcTasksRepository);
-        this.projectArea=rtcTasksRepository.getProjectArea();
+        projectArea = "";
     }
 
     public RTCTasksRepository(final TaskRepositoryType type) {
         super(type);
+        this.projectArea = "";
+    }
+
+    public RTCTasksRepository(final RTCTasksRepository rtcTasksRepository) {
+        super(rtcTasksRepository);
+        setRepositoryType(rtcTasksRepository.getRepositoryType());
+        setProjectArea(rtcTasksRepository.getProjectArea());
+        setUrl(this.getUrl());
+        setUsername(this.getUsername());
+        setPassword(this.getPassword());
+        setEncodedPassword(this.getEncodedPassword());
+        setShouldFormatCommitMessage(isShouldFormatCommitMessage());
+        setCommitMessageFormat(this.getCommitMessageFormat());
+        setShared(this.isShared());
     }
 
     @Override
     public Task[] getIssues(@Nullable final String query, final int offset, final int limit, final boolean withClosed, @NotNull final ProgressIndicator cancelled) throws Exception {
-        RTCConnector.LOGGER.info("Query is "+query);
-        try{
+        RTCConnector.LOGGER.info("Query is " + query);
+        try {
             final Task[] tasksSync = getTasksSync(query);
+            //RTCConnector.LOGGER.info("Query is " + tasksSync);
+//            for (Task task : tasksSync) {
+//                RTCConnector.LOGGER.info(task.toString());
+//            }
             return tasksSync;
-        }catch (TeamRepositoryException e){
-            if (ExceptionUtil.causedBy(e,ClosedByInterruptException.class) || ExceptionUtil.causedBy(e,PermissionDeniedException.class)){
+        } catch (TeamRepositoryException e) {
+            if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class) || ExceptionUtil.causedBy(e, PermissionDeniedException.class)) {
                 throw new ProcessCanceledException(e);
-            }else{
+            } else {
                 throw e;
             }
         }
         //return getTasksAsync(query);
     }
-
-
-    @NotNull
-    @Override
-    public Set<CustomTaskState> getAvailableTaskStates(@NotNull final Task task) throws Exception {
-        final Set<CustomTaskState> availableTaskStates = super.getAvailableTaskStates(task);
-        return availableTaskStates;
-    }
-
 
 
     private Task[] getTasksSync(final @Nullable String query) throws TeamRepositoryException {
@@ -81,13 +89,13 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         final RTCConnector connector = getConnector();
         if (isNumber(query)) {
             final int id = Integer.parseInt(query);
-            final IWorkItem workItemBy = connector.getWorkItemBy(id);
-            tasks=new Task[]{new RTCTask(workItemBy,this)};
+            final RTCTask workItemBy = connector.getWorkItemBy(id);
+            tasks = new Task[]{workItemBy};
         } else {
             final List<IWorkItem> workItemsBy = connector.getWorkItemsBy(query);
             tasks = new Task[workItemsBy.size()];
             for (int i = 0; i < workItemsBy.size(); i++) {
-                tasks[i] = new RTCTask(workItemsBy.get(i),this);
+                tasks[i] = new RTCTask(workItemsBy.get(i), getConnector());
             }
 
         }
@@ -95,10 +103,10 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
     }
 
     private boolean isNumber(final @Nullable String query) {
-        try{
+        try {
             Integer.parseInt(query);
             return true;
-        }catch (NumberFormatException e){
+        } catch (NumberFormatException e) {
             return false;
         }
     }
@@ -108,22 +116,13 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
     public Task findTask(@NotNull final String s) throws Exception {
         final String id1 = RTCTask.getId(s);
         final int id = Integer.parseInt(id1);
-        final IWorkItem workItemBy = getConnector().getWorkItemBy(id);
-        return new RTCTask(workItemBy,this);
-//        return null;
+        return getConnector().getWorkItemBy(id);
     }
 
     @NotNull
     @Override
     public BaseRepository clone() {
-        final RTCTasksRepository cloned = new RTCTasksRepository(this.getRepositoryType());
-        cloned.setPassword(this.getPassword());
-        cloned.setUrl(this.getUrl());
-        cloned.setUsername(this.getUsername());
-        cloned.setEncodedPassword(this.getEncodedPassword());
-        cloned.setCommitMessageFormat(this.getCommitMessageFormat());
-        cloned.setShared(this.isShared());
-        cloned.setProjectArea(getProjectArea());
+        final RTCTasksRepository cloned = new RTCTasksRepository(this);
         return cloned;
     }
 
@@ -159,21 +158,54 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
     }
 
     public String getProjectArea() {
-//        final String[] split = getUsername().split(REGEX);
-//        if (split.length > 1) {
-//            return split[1];
-//        } else {
-//            return "";
-//        }
         return projectArea;
     }
-    private String projectArea="";
-    public void setProjectArea(String projectArea){
-         this.projectArea=projectArea;
+
+    public void setProjectArea(String projectArea) {
+        this.projectArea = projectArea;
     }
+
+    @Override
+    protected int getFeatures() {
+        final int features = super.getFeatures()
+              //  | TaskRepository.TIME_MANAGEMENT | TaskRepository.STATE_UPDATING
+         
+        ;
+        return features;
+    }
+
+    @Override
+    public boolean isSupported(int feature) {
+        final boolean supported = super.isSupported(feature);
+        LOGGER.info("Is supported " + feature + " " + supported);
+        return supported;
+    }
+
+    @Override  //TaskRepository.TIME_MANAGEMENT
+    public void updateTimeSpent(@NotNull LocalTask task, @NotNull String timeSpent, @NotNull String comment) throws Exception {
+        super.updateTimeSpent(task, timeSpent, comment);
+    }
+
+
+    @NotNull
+    @Override //TaskRepository.STATE_UPDATING
+    public Set<CustomTaskState> getAvailableTaskStates(@NotNull final Task task) throws Exception {
+        final Set<CustomTaskState> taskStates = getConnector().getTaskStates();
+        //        final Set<CustomTaskState> availableTaskStates = super.getAvailableTaskStates(task);
+        //        return availableTaskStates;
+        return taskStates;
+    }
+
+    @Override
+    public void setTaskState(@NotNull Task task, @NotNull CustomTaskState state) throws Exception {
+        super.setTaskState(task, state);
+    }
+
     public boolean isConfigured() {
-        return super.isConfigured() && StringUtil.isNotEmpty(this.getUsername()) && StringUtil.isNotEmpty(this.getPassword());
+        final boolean isConfigured = super.isConfigured() && StringUtil.isNotEmpty(this.getUsername()) && StringUtil.isNotEmpty(this.getPassword());
+        return isConfigured;
     }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -186,8 +218,10 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
 
     }
 
+
     @Override
     public int hashCode() {
         return getProjectArea() != null ? getProjectArea().hashCode() : 0;
     }
+
 }
