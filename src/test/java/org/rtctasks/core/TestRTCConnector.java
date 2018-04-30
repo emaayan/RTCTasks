@@ -6,8 +6,11 @@ import com.ibm.team.workitem.client.IWorkItemWorkingCopyManager;
 import com.ibm.team.workitem.client.WorkItemWorkingCopy;
 import com.ibm.team.workitem.common.model.IAttributeHandle;
 import com.ibm.team.workitem.common.model.IWorkItem;
+import com.intellij.openapi.diagnostic.Log4jBasedLogger;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.tasks.Comment;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.jetbrains.annotations.NotNull;
 import org.rtctasks.RTCTask;
 import org.rtctasks.RTCTasksRepository;
 
@@ -20,8 +23,17 @@ import java.util.function.Consumer;
  * Created by exm1110b.
  * Date: 26/04/2018, 12:46
  */
-public class TestRTCConnector {
 
+public class TestRTCConnector {
+    public static final org.apache.log4j.Logger LOGGER= org.apache.log4j.Logger.getLogger(RTCConnector.class);
+    public static class LoggerFactory implements Logger.Factory{
+
+        @NotNull
+        @Override
+        public Logger getLoggerInstance(@NotNull String s) {
+            return new Log4jBasedLogger(LOGGER);
+        }
+    }
     public static void main(String[] args) throws TeamRepositoryException {
         final String url = args[0];
         final String user = args[1];
@@ -34,6 +46,7 @@ public class TestRTCConnector {
         System.out.println(RTCTasksRepository.matchDuration("4m"));
         //final Duration duration = RTCTasksRepository.parseDuration(3, 2, 4);
         //    System.out.println(duration);
+        Logger.setFactory(LoggerFactory.class);
         final RTCConnector connector = RTCConnector.getConnector(url, user, pass, projectArea);
         //        final IWorkItem workItemBy = connector.getWorkItemBy(31297);
         //        System.out.println(workItemBy.getHTMLSummary());
