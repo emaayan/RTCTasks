@@ -27,6 +27,7 @@ import com.ibm.team.workitem.common.query.IQueryResult;
 import com.ibm.team.workitem.common.query.IResolvedResult;
 import com.ibm.team.workitem.common.query.ResultSize;
 import com.ibm.team.workitem.common.workflow.IWorkflowInfo;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.tasks.CustomTaskState;
 import com.intellij.tasks.TaskState;
@@ -40,8 +41,6 @@ import org.rtctasks.RTCTask;
 import java.nio.channels.ClosedByInterruptException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.LogManager;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -51,7 +50,7 @@ import java.util.stream.Stream;
  */
 public class RTCConnector {
 
-    public final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
+    private final static Logger LOGGER = Logger.getInstance(RTCConnector.class);// LogManager.getLogManager().getLogger("global");
     private static final Map<String, RTCConnector> _conPool = new ConcurrentHashMap<>();
     private final static ITeamRepositoryService teamRepositoryService;
 
@@ -77,7 +76,9 @@ public class RTCConnector {
         final String key = url + user + pass + projectArea;
         final RTCConnector rtcConnector = _conPool.computeIfAbsent(key, s -> {
             try {
-                return new RTCConnector(url, user, pass, projectArea);
+                LOGGER.info("Created new instance for connector");
+                final RTCConnector rtcConnector1 = new RTCConnector(url, user, pass, projectArea);
+                return rtcConnector1;
             } catch (AuthenticationException authenticationException) {
                 throw new RequestFailedException(authenticationException);
             } catch (TeamServiceException e) {
@@ -115,7 +116,12 @@ public class RTCConnector {
     private final IWorkItemClient _workItemClient;
     private final Set<Identifier<IState>> allUnresolvedStates;
     private final ITeamRepository _repository;
-    private final IProgressMonitor monitor = new NullProgressMonitor();
+    private final IProgressMonitor monitor = new NullProgressMonitor(){
+        @Override
+        public void beginTask(String name, int totalWork) {
+            super.beginTask(name, totalWork);
+        }
+    };
     private final IProcessItemService connect;
     private final List<IWorkItemType> workItemTypes;
     private final Map<String, TaskType> taskTypeMapper = new HashMap<>();
@@ -155,7 +161,7 @@ public class RTCConnector {
                 return password;
             }
         });
-        LOGGER.info("Connecting to repository in project " + projectArea);
+        info("Connecting to repository in project " + projectArea);
         _repository.login(monitor);
         connect = (IProcessItemService) _repository.getClientLibrary(IProcessItemService.class);
         _projectArea = getProjectArea(projectArea);
@@ -170,7 +176,7 @@ public class RTCConnector {
         taskTypeMapper.put("task", TaskType.FEATURE);
         taskTypeMapper.put("", TaskType.OTHER);
 
-        LOGGER.info("Getting task states");
+        info("Getting task states");
         taskStates = new HashSet<>();
         for (IWorkItemType workItemType : workItemTypes) {
             final String workItemId = workItemType.getIdentifier();
@@ -184,7 +190,7 @@ public class RTCConnector {
                 taskStates.add(customTaskState);
             }
         }
-        LOGGER.info("Got task states " + taskStates);
+        info("Got task states " + taskStates);
 
         final Identifier<IState>[] allUnresolvedStates = getAllUnresolvedStates();
         if (allUnresolvedStates != null) {
@@ -195,7 +201,7 @@ public class RTCConnector {
         }
 
         _factory = QueryableAttributes.getFactory(IWorkItem.ITEM_TYPE);
-        LOGGER.info("Connected to repository " + projectArea);
+        info("Connected to repository " + projectArea);
     }
 
     public Set<CustomTaskState> getTaskStates() {
@@ -213,7 +219,7 @@ public class RTCConnector {
     }
 
     @FunctionalInterface
-    public static interface WorkItemUpdater {
+    public interface WorkItemUpdater {
         public void execute(IWorkItem iWorkItem) throws TeamRepositoryException;
     }
 
@@ -233,7 +239,7 @@ public class RTCConnector {
         updateWorkItem(iWorkItem, iWorkItem1 -> {
             final IAttribute attrIimeSpent = _workItemClient.findAttribute(iWorkItem1.getProjectArea(), "timeSpent", null);
             iWorkItem1.setValue(attrIimeSpent, timeInMs);
-            if (comment!=null && !comment.isEmpty()) {
+            if (comment != null && !comment.isEmpty()) {
                 appendComment(comment, iWorkItem1);
             }
         });
@@ -256,7 +262,7 @@ public class RTCConnector {
             final IContributor name = getContributor(iContributorHandle, "Name");
             return name != null ? name.getName() : "";
         } catch (TeamRepositoryException e) {
-            LOGGER.log(java.util.logging.Level.SEVERE, e, () -> "Failed to find contributor ");
+            error( "Failed to find contributor ",e);
             return "";
         }
     }
@@ -267,7 +273,7 @@ public class RTCConnector {
                 final IWorkItemType workItemType = _workItemClient.findWorkItemType(_projectArea, workItemTypeId, monitor);
                 return workItemType;
             } catch (TeamRepositoryException e) {
-                LOGGER.log(java.util.logging.Level.SEVERE, e, () -> "Failed to find workItme type ");
+                error("Failed to find workItme type ",e);
                 return null;
             }
         } else {
@@ -287,7 +293,7 @@ public class RTCConnector {
             final TaskState taskState = getTaskState(stateGroup);
             return taskState;
         } catch (TeamRepositoryException e) {
-            LOGGER.log(java.util.logging.Level.SEVERE, e, () -> "Failed to find workItme state");
+            error("Failed to find workItme state",e);
             return TaskState.OTHER;
         }
 
@@ -322,7 +328,7 @@ public class RTCConnector {
         return iEnumeration;
     }
 
-    public Identifier<IState>[] getAllUnresolvedStates() throws TeamRepositoryException {
+    private Identifier<IState>[] getAllUnresolvedStates() throws TeamRepositoryException {
         final Identifier<IState>[] allUnResolvedStates = _workItemClient.getAllUnResolvedStates(_projectArea, monitor);
         return allUnResolvedStates;
     }
@@ -352,7 +358,7 @@ public class RTCConnector {
                 if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
                     return null;
                 } else {
-                    LOGGER.severe("Problem with getting " + property);
+                    error("Problem with getting " + property);
                     return null;
                 }
             }
@@ -368,10 +374,6 @@ public class RTCConnector {
         return monitor;
     }
 
-    public List<IProjectArea> getProjectsAreas() throws TeamRepositoryException {
-        final List<IProjectArea> allProjectAreas = connect.findAllProjectAreas(null, monitor);
-        return allProjectAreas;
-    }
 
     private IProjectArea getProjectArea(String name) throws TeamRepositoryException {
         final List<IProjectArea> allProjectAreas = connect.findAllProjectAreas(null, monitor);//TODO: wrap in an exception and get root cause, try again if InterruptedException
@@ -463,7 +465,6 @@ public class RTCConnector {
             // do something with the work item
             processed++;
         }
-        System.out.println("Processedlts: " + processed);
     }
 
     private IQueryableAttribute findAttribute(IProjectAreaHandle projectArea, String attributeId, IProgressMonitor monitor) throws TeamRepositoryException {
@@ -479,6 +480,26 @@ public class RTCConnector {
 
     public IProjectArea getProjectArea() {
         return _projectArea;
+    }
+
+    protected void info(String msg) {
+        LOGGER.info(msg);
+    }
+
+    protected void warn(String msg) {
+        LOGGER.warn(msg);
+    }
+
+    protected void warn(String msg,Throwable t) {
+        LOGGER.warn(msg, t);
+    }
+
+    protected void error(String msg) {
+        LOGGER.error(msg);
+    }
+
+    protected void error(String msg, Throwable t) {
+        LOGGER.error(msg,t);
     }
 }
 

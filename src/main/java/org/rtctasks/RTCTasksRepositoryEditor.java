@@ -4,6 +4,7 @@ import com.ibm.team.process.common.IProcessArea;
 import com.ibm.team.process.common.IProjectArea;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.text.StringUtil;
@@ -29,7 +30,7 @@ import java.util.stream.Collectors;
  * Date: 01/11/2016, 12:19
  */
 public class RTCTasksRepositoryEditor extends BaseRepositoryEditor<RTCTasksRepository> {
-
+    private final static Logger LOGGER =Logger.getInstance(RTCTasksRepositoryEditor.class);
     private JButton getAreas;
     private JBLabel projectLabel;
     private TextFieldWithAutoCompletion  projectArea;
@@ -65,7 +66,7 @@ public class RTCTasksRepositoryEditor extends BaseRepositoryEditor<RTCTasksRepos
             projectArea.setVariants(areas);
             return areas;
         } catch (TeamRepositoryException e) {
-            RTCConnector.LOGGER.severe("Error getting projects "+e);
+            LOGGER.error("Error getting projects ",e);
             Messages.showErrorDialog(this.myProject, StringUtil.capitalize(e.getMessage()), "Error");
             return Collections.EMPTY_LIST;
         }
@@ -94,4 +95,6 @@ public class RTCTasksRepositoryEditor extends BaseRepositoryEditor<RTCTasksRepos
         super.setAnchor(anchor);
         this.projectLabel.setAnchor(anchor);
     }
+
+    
 }

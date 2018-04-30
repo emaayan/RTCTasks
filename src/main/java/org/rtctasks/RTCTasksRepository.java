@@ -4,6 +4,7 @@ package org.rtctasks;
 import com.ibm.team.repository.common.PermissionDeniedException;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.common.model.IWorkItem;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.text.StringUtil;
@@ -21,9 +22,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.logging.LogManager;
-import java.util.logging.Logger;
-import java.util.regex.Pattern;
 //https://intellij-support.jetbrains.com/hc/en-us/community/posts/207098975-Documenation-about-Task-Api
 //https://rsjazz.wordpress.com/2015/03/31/the-work-item-time-tracking-api/
 //https://rsjazz.wordpress.com/2012/07/31/rtc-update-parent-duration-estimation-and-effort-participant//
@@ -35,11 +33,11 @@ import java.util.regex.Pattern;
  */
 @Tag(RTCTasksRepositoryType.NAME)
 public class RTCTasksRepository extends BaseRepositoryImpl {
-    public final static Logger LOGGER = LogManager.getLogManager().getLogger("global");
-    public static final Pattern TIME_SPENT_PATTERN = Pattern.compile("([0-9]+)d ([0-9]+)h ([0-9]+)m");
+    public final static Logger LOGGER = Logger.getInstance(RTCTasksRepository.class);
     public static final String REGEX = "\\|";
     private String projectArea;
 
+//MUST BE KEPT FOR XML DE-SERIERLIZE!!
     public RTCTasksRepository() {
         super();
         projectArea = "";
@@ -65,13 +63,9 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
 
     @Override
     public Task[] getIssues(@Nullable final String query, final int offset, final int limit, final boolean withClosed, @NotNull final ProgressIndicator cancelled) throws Exception {
-        RTCConnector.LOGGER.info("Query is " + query);
+        LOGGER.info("Query is " + query);
         try {
             final Task[] tasksSync = getTasksSync(query);
-            //RTCConnector.LOGGER.info("Query is " + tasksSync);
-//            for (Task task : tasksSync) {
-//                RTCConnector.LOGGER.info(task.toString());
-//            }
             return tasksSync;
         } catch (TeamRepositoryException e) {
             if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class) || ExceptionUtil.causedBy(e, PermissionDeniedException.class)) {
@@ -194,28 +188,28 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         final RTCConnector connector = getConnector();
         final IWorkItem jazzWorkItemById = connector.getJazzWorkItemById(Integer.parseInt(number));
         final Duration duration = matchDuration(timeSpent);
-        connector.updateTimeSpent(jazzWorkItemById,duration.toMillis(),comment);
-        
+        connector.updateTimeSpent(jazzWorkItemById, duration.toMillis(), comment);
+
     }
 
-    public static  Duration matchDuration(@NotNull String timeSpent) {
-        final StringTokenizer stringTokenizer=new StringTokenizer(timeSpent," ");
-        final StringBuffer stringBuffer=new StringBuffer("P");
-        
-        boolean startTime=false;
-        while(stringTokenizer.hasMoreTokens()){
+    public static Duration matchDuration(@NotNull String timeSpent) {
+        final StringTokenizer stringTokenizer = new StringTokenizer(timeSpent, " ");
+        final StringBuffer stringBuffer = new StringBuffer("P");
+
+        boolean startTime = false;
+        while (stringTokenizer.hasMoreTokens()) {
             final String s1 = stringTokenizer.nextToken();
             final String s = s1.toUpperCase();
-            if (s.endsWith("D")){
+            if (s.endsWith("D")) {
                 stringBuffer.append(s);
-                if (!startTime && stringTokenizer.hasMoreTokens()){
+                if (!startTime && stringTokenizer.hasMoreTokens()) {
                     stringBuffer.append("T");
-                    startTime=true;
+                    startTime = true;
                 }
-            }else{
-                if (!startTime){
+            } else {
+                if (!startTime) {
                     stringBuffer.append("T");
-                    startTime=true;
+                    startTime = true;
                 }
                 stringBuffer.append(s);
             }
@@ -225,9 +219,9 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         return parse;
     }
 
-    public static  Duration parseDuration(int days, int hours, int minutes) {
+    public static Duration parseDuration(int days, int hours, int minutes) {
         //P2DT3H4M
-        String durationPattern=String.format("P%dDT%dH%dM",days,hours,minutes);
+        String durationPattern = String.format("P%dDT%dH%dM", days, hours, minutes);
         final Duration parse = Duration.parse(durationPattern);
         return parse;
     }
@@ -242,9 +236,22 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         return taskStates;
     }
 
+
+
     @Override
     public void setTaskState(@NotNull Task task, @NotNull CustomTaskState state) throws Exception {
         super.setTaskState(task, state);
+    }
+
+    @Override
+    public void setPreferredOpenTaskState(@Nullable CustomTaskState state) {
+        super.setPreferredOpenTaskState(state);
+    }
+
+    @Nullable
+    @Override
+    public CustomTaskState getPreferredOpenTaskState() {
+        return super.getPreferredOpenTaskState();
     }
 
     public boolean isConfigured() {

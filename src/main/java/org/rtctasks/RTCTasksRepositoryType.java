@@ -42,9 +42,6 @@ public class RTCTasksRepositoryType extends BaseRepositoryType<RTCTasksRepositor
     @NotNull
     @Override
     public TaskRepositoryEditor createEditor(final RTCTasksRepository repository, final Project project, final Consumer<RTCTasksRepository> changeListener) {
-//        final Consumer<RTCTasksRepository> myconsumer = rtcTaskRepository -> changeListener.consume(rtcTaskRepository);
-//        return new BaseRepositoryEditor<>(project, repository, myconsumer);
         return new RTCTasksRepositoryEditor(project, repository, changeListener);
     }
-
 }
