@@ -10,7 +10,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.tasks.*;
 import com.intellij.tasks.impl.BaseRepository;
-import com.intellij.tasks.impl.BaseRepositoryImpl;
+import com.intellij.tasks.impl.httpclient.NewBaseRepositoryImpl;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.xmlb.annotations.Tag;
 import org.jetbrains.annotations.NotNull;
@@ -32,7 +32,7 @@ import java.util.StringTokenizer;
  * Date: 17/07/2015, 14:54
  */
 @Tag(RTCTasksRepositoryType.NAME)
-public class RTCTasksRepository extends BaseRepositoryImpl {
+public class RTCTasksRepository extends NewBaseRepositoryImpl {
     public final static Logger LOGGER = Logger.getInstance(RTCTasksRepository.class);
     public static final String REGEX = "\\|";
     private String projectArea;
@@ -52,13 +52,6 @@ public class RTCTasksRepository extends BaseRepositoryImpl {
         super(rtcTasksRepository);
         setRepositoryType(rtcTasksRepository.getRepositoryType());
         setProjectArea(rtcTasksRepository.getProjectArea());
-        setUrl(this.getUrl());
-        setUsername(this.getUsername());
-        setPassword(this.getPassword());
-        setEncodedPassword(this.getEncodedPassword());
-        setShouldFormatCommitMessage(isShouldFormatCommitMessage());
-        setCommitMessageFormat(this.getCommitMessageFormat());
-        setShared(this.isShared());
     }
 
     @Override
