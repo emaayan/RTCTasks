@@ -134,9 +134,9 @@ public class RTCTask extends Task {
         final TaskType type = getType();
         switch (type) {
             case BUG:
-                return TasksCoreIcons.Bug;
+                return RTCTasksRepositoryType.BUG;// new ImageIcon(this.getClass().getClassLoader().getResource("org/rtctasks/Misc-Bug-icon.png"), "Bug");
             case FEATURE:
-                return TasksCoreIcons.Feature;
+                return  RTCTasksRepositoryType.FEATURE;//  new ImageIcon(this.getClass().getClassLoader().getResource("org/rtctasks/feature-icon-3.jpg"), "Feature");
             default:
                 return TasksCoreIcons.Clock;
         }
