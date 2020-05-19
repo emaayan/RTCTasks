@@ -214,8 +214,14 @@ public class RTCConnector {
     }
 
     public IContributor getContributor(IContributorHandle iContributorHandle, String... properties) throws TeamRepositoryException {
-        final IContributor iItem = (IContributor) iItemManager.fetchPartialItem(iContributorHandle, ItemManager.DEFAULT, Arrays.asList(properties), monitor);
-        return iItem;
+        try {
+            final IContributor iItem = (IContributor) iItemManager.fetchPartialItem(iContributorHandle, ItemManager.DEFAULT, Collections.emptyList(), monitor);
+            return iItem;
+        }catch (IllegalArgumentException e){
+            error("Failed to find contributor",e);
+            return null;
+        }
+
     }
 
     @FunctionalInterface
@@ -259,7 +265,7 @@ public class RTCConnector {
 
     public String getContributorName(IContributorHandle iContributorHandle, String... properties) {
         try {
-            final IContributor name = getContributor(iContributorHandle, "Name");
+            final IContributor name = getContributor(iContributorHandle, "name");
             return name != null ? name.getName() : "";
         } catch (TeamRepositoryException e) {
             error( "Failed to find contributor ",e);
