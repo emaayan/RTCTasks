@@ -1,7 +1,7 @@
 <idea-plugin  >
   <id>org.rtctasks</id>
   <name>RTCTasks</name>
-  <version>2.04</version>
+  <version>2.05</version>
   <vendor email="elh.maayan@gmail.com" >Elhanan Maayan</vendor>
   <description>RTC task provider, allows searching for tasks in jazz rtc and make them into a change list </description>
 

@@ -6,7 +6,6 @@ import com.ibm.team.workitem.client.IWorkItemWorkingCopyManager;
 import com.ibm.team.workitem.client.WorkItemWorkingCopy;
 import com.ibm.team.workitem.common.model.IAttributeHandle;
 import com.ibm.team.workitem.common.model.IWorkItem;
-import com.intellij.openapi.diagnostic.Log4jBasedLogger;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.tasks.Comment;
 import org.eclipse.core.runtime.NullProgressMonitor;
@@ -25,13 +24,13 @@ import java.util.function.Consumer;
  */
 
 public class TestRTCConnector {
-    public static final org.apache.log4j.Logger LOGGER= org.apache.log4j.Logger.getLogger(RTCConnector.class);
+    public static final Logger LOGGER= Logger.getInstance(RTCConnector.class);
     public static class LoggerFactory implements Logger.Factory{
 
         @NotNull
         @Override
         public Logger getLoggerInstance(@NotNull String s) {
-            return new Log4jBasedLogger(LOGGER);
+            return LOGGER;
         }
     }
     public static void main(String[] args) throws TeamRepositoryException {
@@ -87,7 +86,7 @@ public class TestRTCConnector {
         ///  IAttribute attrIimeSpent = workItemClient.findAttribute(item.getProjectArea(), "timeSpent", null);
         //workItem.setValue(attrIimeSpent, duration);
         //        long duration=2000;
-        
+
         final IWorkItemWorkingCopyManager workItemWorkingCopyManager = workItemClient.getWorkItemWorkingCopyManager();
         workItemWorkingCopyManager.connect(item, IWorkItem.DEFAULT_PROFILE, new NullProgressMonitor());
         final WorkItemWorkingCopy workingCopy = workItemWorkingCopyManager.getWorkingCopy(item);

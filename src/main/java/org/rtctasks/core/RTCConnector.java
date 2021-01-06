@@ -173,7 +173,9 @@ public class RTCConnector {
         workItemTypes = _workItemClient.findWorkItemTypes(_projectArea, monitor);
 
         taskTypeMapper.put("defect", TaskType.BUG);
+        taskTypeMapper.put("com.ibm.team.workitem.workItemType.defect", TaskType.BUG);
         taskTypeMapper.put("task", TaskType.FEATURE);
+        taskTypeMapper.put("com.ibm.team.workitem.workItemType.task",TaskType.FEATURE);
         taskTypeMapper.put("", TaskType.OTHER);
 
         info("Getting task states");
@@ -209,6 +211,7 @@ public class RTCConnector {
     }
 
     public TaskType getTaskType(IWorkItem iWorkItem) {
+
         final String workItemType = iWorkItem.getWorkItemType();
         return taskTypeMapper.getOrDefault(workItemType, TaskType.OTHER);
     }
