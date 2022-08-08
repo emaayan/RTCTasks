@@ -1,0 +1,28 @@
+<idea-plugin>
+
+    <id>org.rtctasks</id>
+    <name>RTCTasks</name>
+    <vendor>Elhanan Maayan</vendor>
+    <version>2.3</version>
+    <!-- https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+
+    <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/build_number_ranges.html for description -->
+    <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
+         on how to target different products -->
+    <!-- uncomment to enable plugin in all products
+    <depends>com.intellij.modules.lang</depends>
+    -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.tasks</depends>
+    <actions>
+        <!-- Add your actions here -->
+    </actions>
+    <projectListeners>
+        <listener class="org.rtctasks.components.ProjectManagerListenerImpl" topic="com.intellij.openapi.project.ProjectManagerListener"/>
+    </projectListeners>
+    <extensions defaultExtensionNs="com.intellij">
+        <tasks.repositoryType implementation="org.rtctasks.RTCTasksRepositoryType"/>
+<!--        <toolWindow id="WorkItems" secondary="true" icon="AllIcons.General.Modified" anchor="right" factoryClass="org.rtctasks.taskview.TaskListFactory"/>-->
+    </extensions>
+
+</idea-plugin>

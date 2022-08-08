@@ -1,0 +1,51 @@
+plugins {
+    id 'org.jetbrains.intellij' version '1.8.0'
+    id 'java'
+}
+
+group = 'org.rtctasks'
+version = '2.3'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation group: 'junit', name: 'junit', version: '4.13.1'
+    testRuntimeOnly('org.junit.vintage:junit-vintage-engine:5.9.0')
+    implementation fileTree(dir: 'lib', include: ['*.jar'])
+}
+
+// See https://github.com/JetBrains/gradle-intellij-plugin/
+intellij {
+    version = '2022.2'
+    type = 'IC'
+    plugins = ['tasks']
+    downloadSources = true
+}
+
+tasks {
+    sourceCompatibility = 11
+    targetCompatibility = 11
+    runIde {
+        //jvmArgs = listOf("-Xms512m", "-Xmx1g")
+        //systemProperties = mapOf("idea.log.config.file" , "${project.rootDir}/custom-log4j.xml")
+        systemProperties 'org.gradle.logging.level': 'DEBUG'
+    }
+    wrapper {
+        gradleVersion = 7.2
+
+    }
+    patchPluginXml {
+        version = '1.0'
+        sinceBuild = '222'
+        untilBuild = '222.*'
+        pluginDescription = 'RTC task provider, allows searching for tasks in jazz rtc and make them into a change list'
+        changeNotes = """   
+      Added support for 2022 and commit message.<br>
+      <em>Still experimental</em>"""
+    }
+    test {
+        useJUnitPlatform()
+    }
+}

@@ -1,20 +1,15 @@
 package org.rtctasks.core;
 
+import com.ibm.team.process.common.IProjectArea;
 import com.ibm.team.repository.common.TeamRepositoryException;
 import com.ibm.team.workitem.client.IWorkItemClient;
 import com.ibm.team.workitem.client.IWorkItemWorkingCopyManager;
 import com.ibm.team.workitem.client.WorkItemWorkingCopy;
-import com.ibm.team.workitem.common.model.IAttributeHandle;
 import com.ibm.team.workitem.common.model.IWorkItem;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.tasks.Comment;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jetbrains.annotations.NotNull;
-import org.rtctasks.RTCTask;
 import org.rtctasks.RTCTasksRepository;
 
-import java.util.Collection;
-import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -24,20 +19,22 @@ import java.util.function.Consumer;
  */
 
 public class TestRTCConnector {
-    public static final Logger LOGGER= Logger.getInstance(RTCConnector.class);
-    public static class LoggerFactory implements Logger.Factory{
-
-        @NotNull
-        @Override
-        public Logger getLoggerInstance(@NotNull String s) {
-            return LOGGER;
-        }
-    }
+    public final static Logger LOGGER = Logger.getInstance(TestRTCConnector.class);
+//    public static class LoggerFactory implements Logger.Factory{
+//
+//        @NotNull
+//        @Override
+//        public Logger getLoggerInstance(@NotNull String s) {
+//            return LOGGER;
+//        }
+//    }
     public static void main(String[] args) throws TeamRepositoryException {
+        LOGGER.info("Test");
         final String url = args[0];
         final String user = args[1];
         final String pass = args[2];
         final String projectArea = args[3];
+
 
 
         System.out.println(RTCTasksRepository.matchDuration("3d 2h 4m"));
@@ -45,8 +42,8 @@ public class TestRTCConnector {
         System.out.println(RTCTasksRepository.matchDuration("4m"));
         //final Duration duration = RTCTasksRepository.parseDuration(3, 2, 4);
         //    System.out.println(duration);
-        Logger.setFactory(LoggerFactory.class);
-        final RTCConnector connector = RTCConnector.getConnector(url, user, pass, projectArea);
+        //Logger.setFactory(LoggerFactory.class);
+        final RTCConnector connector = new RTCConnector(url, user, pass);
         //        final IWorkItem workItemBy = connector.getWorkItemBy(31297);
         //        System.out.println(workItemBy.getHTMLSummary());
         //        final RTCTask rtcTask1 = new RTCTask(workItemBy);
@@ -61,8 +58,16 @@ public class TestRTCConnector {
         keyWord = 49349;
         keyWord = 53353;
         //  keyWord=49352;
-        final IWorkItem item = connector.getJazzWorkItemById(keyWord);
-        connector.updateTimeSpent(item,60000,"Really");
+        final IProjectArea projectsBy = connector.getProjectsBy(projectArea);
+        final String uuidValue = projectsBy.getItemId().getUuidValue();
+        final RTCProject project = connector.getProject(uuidValue);
+        final List<IWorkItem> engine_on_prem_bugs = project.executeQuery("Engine on prem bugs","Cloud 2 and Engine Team", null);
+        for (IWorkItem engine_on_prem_bug : engine_on_prem_bugs) {
+            System.out.println(engine_on_prem_bug.getHTMLSummary().toString());
+        }
+        //      final IWorkItem item = connector.getJazzWorkItemById(keyWord,null);
+
+        //connector.updateTimeSpent(item,60000,"Really");
 //        updateWorkItem(connector, item, new Consumer<IWorkItem>() {
 //            @Override
 //            public void accept(IWorkItem iWorkItem) {
@@ -101,51 +106,51 @@ public class TestRTCConnector {
 
     private static void queryByValue(RTCConnector connector, final int keyWord) throws TeamRepositoryException {
 
-        final IWorkItem item = connector.getJazzWorkItemById(keyWord);
+        final IWorkItem item = connector.getJazzWorkItemById(keyWord,null);
 
 
-        final RTCTask x = new RTCTask(item, connector);
-
-
-        System.out.println(x.getType());
-        System.out.println(x.getProject());
-        System.out.println(x.getPresentableId());
-        System.out.println(x.getPresentableName());
-        System.out.println(x.getIssueUrl());
-        System.out.println(x.getCustomIcon());
-        System.out.println(x.isClosed());
-        System.out.println(x.getNumber());
-        System.out.println(x.toString());
-        final Comment[] comments = x.getComments();
-        for (Comment comment : comments) {
-            final String author = comment.getAuthor();
-            final Date date = comment.getDate();
-            final String text = comment.getText();
-
-            System.out.println(author + " " + date + " " + text);
-        }
-        connector.updateTimeSpent(item, 5000,"Test2");
-        System.out.println("");
+//        final RTCTask x = new RTCTask(item, connector);
+//
+//
+//        System.out.println(x.getType());
+//        System.out.println(x.getProject());
+//        System.out.println(x.getPresentableId());
+//        System.out.println(x.getPresentableName());
+//        System.out.println(x.getIssueUrl());
+//        System.out.println(x.getCustomIcon());
+//        System.out.println(x.isClosed());
+//        System.out.println(x.getNumber());
+//        System.out.println(x.toString());
+//        final Comment[] comments = x.getComments();
+//        for (Comment comment : comments) {
+//            final String author = comment.getAuthor();
+//            final Date date = comment.getDate();
+//            final String text = comment.getText();
+//
+//            System.out.println(author + " " + date + " " + text);
+//        }
+//        connector.updateTimeSpent(item, 5000,"Test2");
+//        System.out.println("");
         // System.out.println("Description " +x.getDescription());
     }
 
-    private static void queryByValue(RTCConnector connector, final String keyWord) throws TeamRepositoryException {
-
-        final Collection<IWorkItem> workItems = connector.getWorkItemsBy(keyWord);
-        for (IWorkItem item : workItems) {
-
-            final List<IAttributeHandle> customAttributes = item.getCustomAttributes();
-            for (IAttributeHandle customAttribute : customAttributes) {
-
-            }
-
-            final String workItemType = item.getWorkItemType();
-
-            final RTCTask x = new RTCTask(item, connector);
-
-            System.out.println("Description " + x.getDescription());
-        }
-    }
+//    private static void queryByValue(RTCConnector connector, final String keyWord) throws TeamRepositoryException {
+//
+//        final Collection<IWorkItem> workItems = connector.getWorkItemsBy(keyWord);
+//        for (IWorkItem item : workItems) {
+//
+//            final List<IAttributeHandle> customAttributes = item.getCustomAttributes();
+//            for (IAttributeHandle customAttribute : customAttributes) {
+//
+//            }
+//
+//            final String workItemType = item.getWorkItemType();
+//
+//            final RTCTask x = new RTCTask(item, connector);
+//
+//            System.out.println("Description " + x.getDescription());
+//        }
+//    }
 
 }
 

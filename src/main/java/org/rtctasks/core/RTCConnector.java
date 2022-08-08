@@ -3,228 +3,164 @@ package org.rtctasks.core;
 import com.ibm.team.foundation.common.text.XMLString;
 import com.ibm.team.process.client.IProcessItemService;
 import com.ibm.team.process.common.IProjectArea;
-import com.ibm.team.process.common.IProjectAreaHandle;
-import com.ibm.team.repository.client.IItemManager;
-import com.ibm.team.repository.client.ITeamRepository;
-import com.ibm.team.repository.client.ITeamRepositoryService;
-import com.ibm.team.repository.client.TeamPlatform;
+import com.ibm.team.process.common.ITeamArea;
+import com.ibm.team.process.common.ITeamAreaHandle;
+import com.ibm.team.repository.client.*;
 import com.ibm.team.repository.client.internal.ItemManager;
-import com.ibm.team.repository.common.IContributor;
-import com.ibm.team.repository.common.IContributorHandle;
-import com.ibm.team.repository.common.IExtensibleItem;
-import com.ibm.team.repository.common.TeamRepositoryException;
-import com.ibm.team.repository.common.transport.TeamServiceException;
-import com.ibm.team.repository.transport.client.AuthenticationException;
-import com.ibm.team.workitem.client.IQueryClient;
+import com.ibm.team.repository.common.*;
+import com.ibm.team.repository.common.UUID;
 import com.ibm.team.workitem.client.IWorkItemClient;
 import com.ibm.team.workitem.client.IWorkItemWorkingCopyManager;
 import com.ibm.team.workitem.client.WorkItemWorkingCopy;
-import com.ibm.team.workitem.common.IAuditableCommon;
-import com.ibm.team.workitem.common.IQueryCommon;
 import com.ibm.team.workitem.common.expression.*;
 import com.ibm.team.workitem.common.model.*;
 import com.ibm.team.workitem.common.query.IQueryResult;
 import com.ibm.team.workitem.common.query.IResolvedResult;
-import com.ibm.team.workitem.common.query.ResultSize;
 import com.ibm.team.workitem.common.workflow.IWorkflowInfo;
-import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.tasks.CustomTaskState;
-import com.intellij.tasks.TaskState;
-import com.intellij.tasks.TaskType;
-import com.intellij.tasks.impl.RequestFailedException;
-import com.intellij.util.ExceptionUtil;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.rtctasks.RTCTask;
+import org.rtctasks.ProgressMonitor;
 
-import java.nio.channels.ClosedByInterruptException;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Created by exm1110B.
  * Date: 17/07/2015, 15:14
  */
-public class RTCConnector {
+public class RTCConnector implements ITeamRepository.ILoginHandler, ITeamRepository.ILoginHandler.ILoginInfo {
 
-    private final static Logger LOGGER = Logger.getInstance(RTCConnector.class);// LogManager.getLogManager().getLogger("global");
-    private static final Map<String, RTCConnector> _conPool = new ConcurrentHashMap<>();
-    private final static ITeamRepositoryService teamRepositoryService;
-
+    private static final Log LOGGER;
+    private static final ITeamRepositoryService teamRepositoryService;
 
     static {
         TeamPlatform.startup();
+        LOGGER = LogFactory.getLog(RTCConnector.class.getName());//to use LogFactory from jazz ,this must happen after startup
         teamRepositoryService = TeamPlatform.getTeamRepositoryService();
-
     }
-
-    private final Set<CustomTaskState> taskStates;
-    private final IItemManager iItemManager;
-    private final IWorkItemWorkingCopyManager workItemWorkingCopyManager;
-    private final IContributor loggedInContributor;
-
 
     static void close() {
         TeamPlatform.shutdown();
     }
 
-    public static synchronized RTCConnector getConnector(String url, String user, String pass, String projectArea) {
 
-        final String key = url + user + pass + projectArea;
-        final RTCConnector rtcConnector = _conPool.computeIfAbsent(key, s -> {
-            try {
-                LOGGER.info("Created new instance for connector");
-                final RTCConnector rtcConnector1 = new RTCConnector(url, user, pass, projectArea);
-                return rtcConnector1;
-            } catch (AuthenticationException authenticationException) {
-                throw new RequestFailedException(authenticationException);
-            } catch (TeamServiceException e) {
-                if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
-                    throw new ProcessCanceledException(e);
-                } else {
-                    throw new RequestFailedException(e);
-                }
-            } catch (TeamRepositoryException e) {
-                throw new RequestFailedException(e);
-            }
-        });
+    private String user;
+    private String pass;
+    private final ITeamRepository repository;
+    private final IProcessItemService clientLibrary;
+    private final IItemManager iItemManager;
 
-        try {
-            rtcConnector.checkLogin();
-        } catch (AuthenticationException authenticationException) {
-            throw new RequestFailedException(authenticationException);
-        } catch (TeamServiceException e) {
-            if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
-                throw new ProcessCanceledException(e);
-            } else {
-                throw new RequestFailedException(e);
-            }
-        } catch (TeamRepositoryException e) {
-            throw new RequestFailedException(e);
-        }
-
-        return rtcConnector;
-    }
-
-
-    private final IProjectArea _projectArea;
-    private final IQueryableAttributeFactory _factory;
+    private final IWorkItemWorkingCopyManager _workItemWorkingCopyManager;
+    private final IQueryableAttributeFactory factory = QueryableAttributes.getFactory(IWorkItem.ITEM_TYPE);
     //    private final IWorkItemCommon _workItemCommon;
-    private final IWorkItemClient _workItemClient;
-    private final Set<Identifier<IState>> allUnresolvedStates;
-    private final ITeamRepository _repository;
-    private final IProgressMonitor monitor = new NullProgressMonitor(){
-        @Override
-        public void beginTask(String name, int totalWork) {
-            super.beginTask(name, totalWork);
-        }
-    };
-    private final IProcessItemService connect;
-    private final List<IWorkItemType> workItemTypes;
-    private final Map<String, TaskType> taskTypeMapper = new HashMap<>();
+    private final IWorkItemClient workItemClient;
+    private final IProgressMonitor monitor;
+
+
     private final Map<String, Map<Identifier<? extends ILiteral>, ILiteral>> literals = new ConcurrentHashMap<>();
 
-    public static List<IProjectArea> getAllProject(final String url, final String username, final String password) throws TeamRepositoryException {
-        final ITeamRepository teamRepository = teamRepositoryService.getTeamRepository(url);
+    public RTCConnector(String url, String user, String pass) {
+        this(url, user, pass, new NullProgressMonitor());
+    }
 
-        teamRepository.registerLoginHandler((ITeamRepository.ILoginHandler) repository -> new ITeamRepository.ILoginHandler.ILoginInfo() {
-            public String getUserId() {
-                return username;
-            }
+    public RTCConnector(String url, String user, String pass, IProgressMonitor iProgressMonitor) {
+        this.monitor = iProgressMonitor;
+        this.user = user;
+        this.pass = pass;
+        repository = teamRepositoryService.getTeamRepository(url);
+        repository.registerLoginHandler(this);
+        iItemManager = repository.itemManager();
+        workItemClient = (IWorkItemClient) repository.getClientLibrary(IWorkItemClient.class);
+        clientLibrary = (IProcessItemService) repository.getClientLibrary(IProcessItemService.class);
+        _workItemWorkingCopyManager = workItemClient.getWorkItemWorkingCopyManager();
+    }
 
-            public String getPassword() {
-                return password;
-            }
-        });
-        LOGGER.info("Connecting to repository");
-        final NullProgressMonitor iProgressMonitor = new NullProgressMonitor();
-        teamRepository.login(iProgressMonitor);
-        final IProcessItemService clientLibrary = (IProcessItemService) teamRepository.getClientLibrary(IProcessItemService.class);
-        final List<IProjectArea> allProjectAreas = clientLibrary.findAllProjectAreas(null, iProgressMonitor);
-        teamRepository.logout();
+    @Override
+    public ILoginInfo challenge(ITeamRepository iTeamRepository) {
+        LOGGER.info("Logging into " + iTeamRepository.getRepositoryURI());
+        return this;
+    }
 
+    @Override
+    public String getUserId() {
+        return user;
+    }
+
+    @Override
+    public String getPassword() {
+        return pass;
+    }
+
+    public void setUser(String user) throws TeamRepositoryException {
+        this.user = user;
+        checkLogin();
+    }
+
+    public void setPass(String pass) throws TeamRepositoryException {
+        this.pass = pass;
+        checkLogin();
+    }
+
+    public void checkLogin() throws TeamRepositoryException {
+
+        if (!repository.loggedIn() && StringUtils.isNotEmpty(user) && StringUtils.isNotEmpty(pass)) {
+            repository.login(monitor);
+        }
+    }
+
+    public void login() throws TeamRepositoryException {
+        checkLogin();
+    }
+
+    public void logout() {
+        if (repository.loggedIn()) {
+            repository.logout();
+            this.projects.clear();
+        }
+    }
+
+    public List<IProjectArea> getProjects() throws TeamRepositoryException {
+        checkLogin();
+        final List<IProjectArea> allProjectAreas = clientLibrary.findAllProjectAreas(null, monitor);
         return allProjectAreas;
     }
 
-
-    public RTCConnector(final String url, final String username, final String password, String projectArea) throws TeamRepositoryException {
-        _repository = teamRepositoryService.getTeamRepository(url);
-        _repository.registerLoginHandler((ITeamRepository.ILoginHandler) repository -> new ITeamRepository.ILoginHandler.ILoginInfo() {
-            public String getUserId() {
-                return username;
-            }
-
-            public String getPassword() {
-                return password;
-            }
-        });
-        info("Connecting to repository in project " + projectArea);
-        _repository.login(monitor);
-        connect = (IProcessItemService) _repository.getClientLibrary(IProcessItemService.class);
-        _projectArea = getProjectArea(projectArea);
-
-        _workItemClient = (IWorkItemClient) _repository.getClientLibrary(IWorkItemClient.class);
-        workItemWorkingCopyManager = _workItemClient.getWorkItemWorkingCopyManager();
-        iItemManager = _repository.itemManager();
-        loggedInContributor = _repository.loggedInContributor();
-        workItemTypes = _workItemClient.findWorkItemTypes(_projectArea, monitor);
-
-        taskTypeMapper.put("defect", TaskType.BUG);
-        taskTypeMapper.put("com.ibm.team.workitem.workItemType.defect", TaskType.BUG);
-        taskTypeMapper.put("task", TaskType.FEATURE);
-        taskTypeMapper.put("com.ibm.team.workitem.workItemType.task",TaskType.FEATURE);
-        taskTypeMapper.put("", TaskType.OTHER);
-
-        info("Getting task states");
-        taskStates = new HashSet<>();
-        for (IWorkItemType workItemType : workItemTypes) {
-            final String workItemId = workItemType.getIdentifier();
-            //  LOGGER.info("work item types" + identifier);
-            final IWorkflowInfo workFlowInfo = _workItemClient.getWorkflow(workItemId, _projectArea, monitor);
-            final Identifier<IState>[] allStateIds = workFlowInfo.getAllStateIds();
-            for (Identifier<IState> stateId : allStateIds) {
-                final String stringIdentifier = stateId.getStringIdentifier();
-                final String stateName = workFlowInfo.getStateName(stateId);
-                final CustomTaskState customTaskState = new CustomTaskState(stringIdentifier, stateName);
-                taskStates.add(customTaskState);
+    public IProjectArea getProjectsBy(String name) throws TeamRepositoryException {
+        final List<IProjectArea> projects = getProjects();
+        for (IProjectArea project : projects) {
+            if (project.getName().equals(name)) {
+                return project;
             }
         }
-        info("Got task states " + taskStates);
-
-        final Identifier<IState>[] allUnresolvedStates = getAllUnresolvedStates();
-        if (allUnresolvedStates != null) {
-            final Stream<Identifier<IState>> allUnresolvedStates1 = Stream.of(allUnresolvedStates);
-            this.allUnresolvedStates = allUnresolvedStates1.collect(Collectors.toSet());
-        } else {
-            this.allUnresolvedStates = Collections.emptySet();
-        }
-
-        _factory = QueryableAttributes.getFactory(IWorkItem.ITEM_TYPE);
-        info("Connected to repository " + projectArea);
+        return null;
     }
 
-    public Set<CustomTaskState> getTaskStates() {
-        return taskStates;
+    public IProjectArea getProjectAreaBy(String uuidValue) throws TeamRepositoryException {
+        final IItem itemByUUID = getItemByUUID(uuidValue, IProjectArea.ITEM_TYPE);
+        return (IProjectArea) itemByUUID;
     }
 
-    public TaskType getTaskType(IWorkItem iWorkItem) {
+    public IItem getItemByUUID(String uuidValue, final IItemType itemType, String... properties) throws TeamRepositoryException {
+        checkLogin();
+        final UUID uuid = UUID.valueOf(uuidValue);
+        final IItemHandle itemHandle = itemType.createItemHandle(uuid, null);
+        final IItem iItem = iItemManager.fetchPartialItem(itemHandle, ItemManager.DEFAULT, Arrays.asList(properties), monitor);
 
-        final String workItemType = iWorkItem.getWorkItemType();
-        return taskTypeMapper.getOrDefault(workItemType, TaskType.OTHER);
+        return iItem;
     }
 
-    public IContributor getContributor(IContributorHandle iContributorHandle, String... properties) throws TeamRepositoryException {
+    public IContributor getContributor(IContributorHandle iContributorHandle, ProgressMonitor progressMonitor) throws TeamRepositoryException {
         try {
-            final IContributor iItem = (IContributor) iItemManager.fetchPartialItem(iContributorHandle, ItemManager.DEFAULT, Collections.emptyList(), monitor);
+            checkLogin();
+            final IContributor iItem = (IContributor) iItemManager.fetchPartialItem(iContributorHandle, ItemManager.DEFAULT, Collections.emptyList(), progressMonitor);
             return iItem;
-        }catch (IllegalArgumentException e){
-            error("Failed to find contributor",e);
+        } catch (IllegalArgumentException e) {
+            error("Failed to find contributor", e);
             return null;
         }
-
     }
 
     @FunctionalInterface
@@ -234,19 +170,19 @@ public class RTCConnector {
 
     public void updateWorkItem(IWorkItem iWorkItem, WorkItemUpdater iWorkItemConsumer) throws TeamRepositoryException {
         try {
-            workItemWorkingCopyManager.connect(iWorkItem, IWorkItem.DEFAULT_PROFILE, monitor);
-            final WorkItemWorkingCopy workingCopy = workItemWorkingCopyManager.getWorkingCopy(iWorkItem);
+            _workItemWorkingCopyManager.connect(iWorkItem, IWorkItem.DEFAULT_PROFILE, monitor);
+            final WorkItemWorkingCopy workingCopy = _workItemWorkingCopyManager.getWorkingCopy(iWorkItem);
             final IWorkItem workItem = workingCopy.getWorkItem();
             iWorkItemConsumer.execute(workItem);
-            workItemWorkingCopyManager.save(new WorkItemWorkingCopy[]{workingCopy}, new NullProgressMonitor());
+            _workItemWorkingCopyManager.save(new WorkItemWorkingCopy[]{workingCopy}, monitor);
         } finally {
-            workItemWorkingCopyManager.disconnect(iWorkItem);
+            _workItemWorkingCopyManager.disconnect(iWorkItem);
         }
     }
 
     public void updateTimeSpent(IWorkItem iWorkItem, long timeInMs, String comment) throws TeamRepositoryException {
         updateWorkItem(iWorkItem, iWorkItem1 -> {
-            final IAttribute attrIimeSpent = _workItemClient.findAttribute(iWorkItem1.getProjectArea(), "timeSpent", null);
+            final IAttribute attrIimeSpent = workItemClient.findAttribute(iWorkItem1.getProjectArea(), "timeSpent", monitor);
             iWorkItem1.setValue(attrIimeSpent, timeInMs);
             if (comment != null && !comment.isEmpty()) {
                 appendComment(comment, iWorkItem1);
@@ -255,96 +191,24 @@ public class RTCConnector {
     }
 
     public void addComment(IWorkItem iWorkItem, String comment) throws TeamRepositoryException {
-        updateWorkItem(iWorkItem, iWorkItem1 -> {
-            appendComment(comment, iWorkItem1);
-        });
+        updateWorkItem(iWorkItem, iWorkItem1 -> appendComment(comment, iWorkItem1));
     }
 
     private void appendComment(String comment, IWorkItem iWorkItem1) {
         final XMLString fromPlainText = XMLString.createFromPlainText(comment);
+        final IContributor loggedInContributor = repository.loggedInContributor();
         final IComment iComment = iWorkItem1.getComments().createComment(loggedInContributor, fromPlainText);
         iWorkItem1.getComments().append(iComment);
     }
 
-    public String getContributorName(IContributorHandle iContributorHandle, String... properties) {
+    public String getContributorName(IContributorHandle iContributorHandle, ProgressMonitor progressMonitor) {
         try {
-            final IContributor name = getContributor(iContributorHandle, "name");
+            final IContributor name = getContributor(iContributorHandle, progressMonitor);
             return name != null ? name.getName() : "";
         } catch (TeamRepositoryException e) {
-            error( "Failed to find contributor ",e);
+            error("Failed to find contributor ", e);
             return "";
         }
-    }
-
-    public IWorkItemType getWorkItemType(String workItemTypeId) {
-        if (workItemTypeId != null && !workItemTypeId.isEmpty()) {
-            try {
-                final IWorkItemType workItemType = _workItemClient.findWorkItemType(_projectArea, workItemTypeId, monitor);
-                return workItemType;
-            } catch (TeamRepositoryException e) {
-                error("Failed to find workItme type ",e);
-                return null;
-            }
-        } else {
-            return null;
-        }
-    }
-
-    public void checkLogin() throws TeamRepositoryException {
-        if (!_repository.loggedIn()) {
-            _repository.login(monitor);
-        }
-    }
-
-    public TaskState getTaskState(IWorkItem iWorkItem) {
-        try {
-            final int stateGroup = getTaskStateGroup(iWorkItem);
-            final TaskState taskState = getTaskState(stateGroup);
-            return taskState;
-        } catch (TeamRepositoryException e) {
-            error("Failed to find workItme state",e);
-            return TaskState.OTHER;
-        }
-
-    }
-
-    public TaskState getTaskState(int state) {
-        switch (state) {
-            case IWorkflowInfo.OPEN_STATES:
-                return TaskState.OPEN;
-            case IWorkflowInfo.CLOSED_STATES:
-                return TaskState.RESOLVED;
-            case IWorkflowInfo.IN_PROGRESS_STATES:
-                return TaskState.IN_PROGRESS;
-            default:
-                return TaskState.OTHER;
-        }
-    }
-
-    public Map<Identifier<? extends ILiteral>, ILiteral> getLiterals(String property) throws TeamRepositoryException {
-        final IEnumeration<? extends ILiteral> iEnumeration = getEnumerations(property);
-        final List<? extends ILiteral> enumerationLiterals = iEnumeration.getEnumerationLiterals();
-        final Map<Identifier<? extends ILiteral>, ILiteral> lits = new HashMap<>(enumerationLiterals.size());
-        for (ILiteral enumerationLiteral : enumerationLiterals) {
-            lits.put(enumerationLiteral.getIdentifier2(), enumerationLiteral);
-        }
-        return lits;
-    }
-
-    public IEnumeration<? extends ILiteral> getEnumerations(final String property) throws TeamRepositoryException {
-        final IAttribute attribute = _workItemClient.findAttribute(_projectArea, property, monitor);
-        final IEnumeration<? extends ILiteral> iEnumeration = _workItemClient.resolveEnumeration(attribute, monitor);
-        return iEnumeration;
-    }
-
-    private Identifier<IState>[] getAllUnresolvedStates() throws TeamRepositoryException {
-        final Identifier<IState>[] allUnResolvedStates = _workItemClient.getAllUnResolvedStates(_projectArea, monitor);
-        return allUnResolvedStates;
-    }
-
-    public boolean isOpen(IWorkItem iWorkItem) {
-        final Identifier<IState> state2 = iWorkItem.getState2();
-        return this.allUnresolvedStates.contains(state2);
     }
 
     public int getTaskStateGroup(IWorkItem iWorkItem) throws TeamRepositoryException {
@@ -354,161 +218,87 @@ public class RTCConnector {
     }
 
 
-    public IWorkflowInfo getWorkFlowInfo(IWorkItem iWorkItem) throws TeamRepositoryException {
-        final IWorkflowInfo workflowInfo = _workItemClient.findWorkflowInfo(iWorkItem, monitor);
+    private IWorkflowInfo getWorkFlowInfo(IWorkItem iWorkItem) throws TeamRepositoryException {
+        checkLogin();
+        final IWorkflowInfo workflowInfo = workItemClient.findWorkflowInfo(iWorkItem, monitor);
         return workflowInfo;
     }
 
-    public ILiteral getEnumeration(final String property, Identifier identifier) {
-        final Map<Identifier<? extends ILiteral>, ILiteral> identifierILiteralMap = literals.computeIfAbsent(property, s -> {
-            try {
-                return getLiterals(s);
-            } catch (TeamRepositoryException e) {
-                if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
-                    return null;
-                } else {
-                    error("Problem with getting " + property);
-                    return null;
-                }
-            }
-        });
-        if (identifierILiteralMap != null) {
-            return identifierILiteralMap.get(identifier);
-        } else {
-            return null;
-        }
-    }
-
-    public IProgressMonitor getMonitor() {
-        return monitor;
-    }
-
-
     private IProjectArea getProjectArea(String name) throws TeamRepositoryException {
-        final List<IProjectArea> allProjectAreas = connect.findAllProjectAreas(null, monitor);//TODO: wrap in an exception and get root cause, try again if InterruptedException
+        checkLogin();
+        final List<IProjectArea> allProjectAreas = clientLibrary.findAllProjectAreas(null, monitor);//TODO: wrap in an exception and get root cause, try again if InterruptedException
         for (IProjectArea projectArea : allProjectAreas) {
             if (projectArea.getName().equals(name)) {
                 return projectArea;
             }
         }
-        throw new RuntimeException("No Projects were found ");
+        throw new RuntimeException("No Projects were found for  " + name);
+    }
+
+    public RTCProject getProject(String uuid) throws TeamRepositoryException {
+        return getProject(uuid, null);
     }
 
 
-    public List<IWorkItem> getWorkItemsBy(String value) throws TeamRepositoryException {
-        List<IWorkItem> matchingWorkItems;
-        //        final IQueryableAttribute idAttribute = findAttribute(_projectArea, IWorkItem.ID_PROPERTY, monitor);
-        //        final AttributeExpression idExpression = new AttributeExpression(idAttribute, AttributeOperation.EQUALS,Integer.parseInt(value));
-        //    try {
-        final IQueryableAttribute summeryAttribute = findAttribute(_projectArea, IWorkItem.SUMMARY_PROPERTY, monitor);
-        final AttributeExpression summeryExpression = new AttributeExpression(summeryAttribute, AttributeOperation.CONTAINS, value);
+    private final ConcurrentHashMap<String, RTCProject> projects = new ConcurrentHashMap<>();
 
-        final IQueryableAttribute descriptionAttribute = findAttribute(_projectArea, IWorkItem.DESCRIPTION_PROPERTY, monitor);
-        final AttributeExpression descriptionExpression = new AttributeExpression(descriptionAttribute, AttributeOperation.CONTAINS, value);
+    public RTCProject getProject(String uuid, ProgressMonitor progressMonitor) throws TeamRepositoryException {
+        checkLogin();
+        final RTCProject project = projects.computeIfAbsent(uuid, s -> {
+            try {
+                final IProjectArea projectArea = getProjectAreaBy(uuid);
+                final List<ITeamAreaHandle> teamAreas = projectArea.getTeamAreas();
+                final Map<String,ITeamArea> m=new HashMap<>();
+                for (ITeamAreaHandle teamArea : teamAreas) {
+                    final ITeamArea itemByUUID = (ITeamArea) getItemByUUID(teamArea.getItemId().getUuidValue(), ITeamArea.ITEM_TYPE,"name");
+                    m.put(itemByUUID.getItemId().getUuidValue(),itemByUUID);
+                }
+                final RTCProject project1 = new RTCProject(workItemClient, projectArea,m, progressMonitor);
+                return project1;
+            } catch (TeamRepositoryException e) {
+                throw new RuntimeException(e);
+            }
+        });
 
-        final IQueryableAttribute projectAreaAttribute = findAttribute(_projectArea, IWorkItem.PROJECT_AREA_PROPERTY, monitor);
-        final AttributeExpression projectAreaExpression = new AttributeExpression(projectAreaAttribute, AttributeOperation.EQUALS, _projectArea);
-
-        //        final Term term = new Term(Term.Operator.AND);
-        //        term.add(projectAreaExpression);
-        //        term.add(summeryExpression);
-
-
-        final Term term = new Term(Term.Operator.AND);
-        if (value != null && !value.isEmpty()) {
-            final Term termOr = new Term(Term.Operator.OR);
-            //   termOr.add(idExpression);
-            termOr.add(summeryExpression);
-            //    termOr.add(descriptionExpression);
-            term.add(termOr);
-        }
-
-        term.add(projectAreaExpression);
-
-        final IQueryCommon queryService = _workItemClient.getQueryClient();
-        final ItemProfile<IWorkItem> profile = IWorkItem.FULL_PROFILE;
-        final IQueryResult<IResolvedResult<IWorkItem>> result = queryService.getResolvedExpressionResults(_projectArea, term, profile);
-
-        final ResultSize resultSize = result.getResultSize(monitor);
-        final int totalAvailable = resultSize.getTotalAvailable();
-        matchingWorkItems = new ArrayList<IWorkItem>(totalAvailable);
-        while (result.hasNext(monitor)) {
-            final IWorkItem item = result.next(monitor).getItem();
-            matchingWorkItems.add(item);
-        }
-        //  } catch (TeamServiceException e) {
-        //            final Throwable rootCause = ExceptionUtils.getRootCause(e);
-        //            if (rootCause instanceof ClosedByInterruptException) {
-        //                System.out.println("Stopped query");
-        //                matchingWorkItems= new ArrayList<IWorkItem>(0);
-        //                //PermissionDeniedException
-        //            } else {
-        //                System.out.println("another really error");
-        //                throw e;
-        //            }
-        //    }
-        return matchingWorkItems;
+        return project;
     }
 
-    public IWorkItem getJazzWorkItemById(int id) throws TeamRepositoryException {
-        return _workItemClient.findWorkItemById(id, IWorkItem.FULL_PROFILE, monitor);
+
+    public IWorkItem getJazzWorkItemById(int id, ProgressMonitor progressMonitor) throws TeamRepositoryException {
+        checkLogin();
+        return workItemClient.findWorkItemById(id, IWorkItem.FULL_PROFILE, progressMonitor);
     }
 
     public IWorkItemClient getWorkItemClient() {
-        return _workItemClient;
-    }
-
-    public RTCTask getWorkItemBy(int id) throws TeamRepositoryException {
-        final IWorkItem workItemById = getJazzWorkItemById(id);
-        return new RTCTask(workItemById, this);
+        return workItemClient;
     }
 
 
-    public void processResolvedResults(IQueryResult<IResolvedResult> resolvedResults) throws TeamRepositoryException {
+    public void processResolvedResults(IQueryResult<IResolvedResult<IWorkItem>> resolvedResults) throws TeamRepositoryException {
         // Get the required client libraries
         long processed = 0;
         while (resolvedResults.hasNext(monitor)) {
-            final IResolvedResult result = resolvedResults.next(monitor);
-            final IWorkItem workItem = (IWorkItem) result.getItem();
-            System.out.println(workItem.getHTMLSummary());
+            final IResolvedResult<IWorkItem> result = resolvedResults.next(monitor);
+            final IWorkItem workItem =  result.getItem();
+            //System.out.println(workItem.getHTMLSummary());
             // do something with the work item
             processed++;
         }
     }
 
-    private IQueryableAttribute findAttribute(IProjectAreaHandle projectArea, String attributeId, IProgressMonitor monitor) throws TeamRepositoryException {
-        final IQueryClient queryClient = _workItemClient.getQueryClient();
-        final IAuditableCommon auditableCommon = queryClient.getAuditableCommon();
-        return _factory.findAttribute(projectArea, attributeId, auditableCommon, monitor);
-    }
 
     private ItemProfile<IWorkItem> getProfile(IQueryableAttribute attribute) {
         if (!attribute.isStateExtension()) return IWorkItem.SMALL_PROFILE.createExtension(attribute.getIdentifier());
         return IWorkItem.SMALL_PROFILE.createExtension(IWorkItem.CUSTOM_ATTRIBUTES_PROPERTY, IExtensibleItem.TIMESTAMP_EXTENSIONS_QUERY_PROPERTY);
     }
 
-    public IProjectArea getProjectArea() {
-        return _projectArea;
-    }
-
-    protected void info(String msg) {
-        LOGGER.info(msg);
-    }
-
-    protected void warn(String msg) {
-        LOGGER.warn(msg);
-    }
-
-    protected void warn(String msg,Throwable t) {
-        LOGGER.warn(msg, t);
-    }
 
     protected void error(String msg) {
         LOGGER.error(msg);
     }
 
     protected void error(String msg, Throwable t) {
-        LOGGER.error(msg,t);
+        LOGGER.error(msg, t);
     }
 }
 
