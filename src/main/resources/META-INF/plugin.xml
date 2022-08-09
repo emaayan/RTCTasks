@@ -3,7 +3,7 @@
     <id>org.rtctasks</id>
     <name>RTCTasks</name>
     <vendor>Elhanan Maayan</vendor>
-    <version>2.3</version>
+<!--    <version>2.3</version>-->
     <!-- https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 
     <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/build_number_ranges.html for description -->

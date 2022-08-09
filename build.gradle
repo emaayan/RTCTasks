@@ -37,7 +37,7 @@ tasks {
 
     }
     patchPluginXml {
-        version = '1.0'
+//        version = '2.3'
         sinceBuild = '222'
         untilBuild = '222.*'
         pluginDescription = 'RTC task provider, allows searching for tasks in jazz rtc and make them into a change list'
