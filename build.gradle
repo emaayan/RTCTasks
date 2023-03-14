@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'org.rtctasks'
-version = '2.4'
+version = '2.5'
 
 repositories {
     mavenCentral()
@@ -39,7 +39,7 @@ tasks {
     patchPluginXml {
 //        version = '2.3'
         sinceBuild = '222'
-//        untilBuild = '222.*'
+        untilBuild = '224.*'
         pluginDescription = 'RTC task provider, allows searching for tasks in jazz rtc and make them into a change list'
         changeNotes = """   
       Added support for 2022 and commit message.<br>
