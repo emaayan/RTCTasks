@@ -3,12 +3,10 @@ package org.rtctasks.model;
 import com.ibm.team.repository.client.internal.TeamRepository;
 import com.ibm.team.repository.common.Location;
 import com.ibm.team.workitem.common.model.*;
-import com.intellij.tasks.Comment;
-import com.intellij.tasks.Task;
-import com.intellij.tasks.TaskState;
-import com.intellij.tasks.TaskType;
+import com.intellij.tasks.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.rtctasks.RTCTasksRepository;
 
 import javax.swing.*;
 import java.util.Date;
@@ -23,28 +21,35 @@ public class RTCTask extends Task {
     private final RTCTaskType rtcTaskType;
     private final RTCTaskState rtcTaskState;
     private final RTCComment[] rtcComments;
-    private final String project;
-
-    public RTCTask(IWorkItem iWorkItem, RTCTaskType rtcTaskType, RTCTaskState rtcTaskState, RTCComment[] rtcComments, String project) {
+    private final RTCTasksRepository repo;
+    private final String projectName;
+    public RTCTask(IWorkItem iWorkItem, RTCTaskType rtcTaskType, RTCTaskState rtcTaskState, RTCComment[] rtcComments,String projectName,  RTCTasksRepository repo) {
         this.iWorkItem = iWorkItem;
         this.rtcTaskType = rtcTaskType;
         this.rtcTaskState = rtcTaskState;
         this.rtcComments = rtcComments;
-        this.project = project;
+        this.repo=repo;
+        this.projectName=projectName;
 
     }
 
     public static String getId(String name) {
-        return name;
+        //return name;
+        return extractNumberFromId( name);
     }
+    
 
     @NotNull
     @Override
     public String getId() {
         final int id = iWorkItem.getId();
-        return Integer.toString(id);
+        return "%s-%d".formatted(repo.getRepositoryType().getName(), id);
     }
 
+    @Override
+    public @Nullable TaskRepository getRepository() {
+        return this.repo;
+    }
 
     @NotNull
     @Override
@@ -122,7 +127,7 @@ public class RTCTask extends Task {
     @Nullable
     @Override
     public String getProject() {
-        return project;
+        return this.projectName;
     }
 
     @Nullable

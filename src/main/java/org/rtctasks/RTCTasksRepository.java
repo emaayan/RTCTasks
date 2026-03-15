@@ -14,10 +14,12 @@ import com.ibm.team.workitem.common.workflow.IWorkflowInfo;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.tasks.*;
 import com.intellij.tasks.impl.BaseRepository;
 import com.intellij.tasks.impl.RequestFailedException;
+import com.intellij.tasks.impl.httpclient.NewBaseRepositoryImpl;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.xmlb.annotations.Tag;
 import org.apache.commons.lang.StringUtils;
@@ -31,6 +33,7 @@ import org.rtctasks.model.RTCComment;
 import org.rtctasks.model.RTCTask;
 import org.rtctasks.model.RTCTaskState;
 import org.rtctasks.model.RTCTaskType;
+import org.slf4j.LoggerFactory;
 
 import java.nio.channels.ClosedByInterruptException;
 import java.time.Duration;
@@ -47,15 +50,16 @@ import java.util.stream.Collectors;
  * Date: 17/07/2015, 14:54
  */
 @Tag(RTCTasksRepositoryType.NAME)
-public class RTCTasksRepository extends BaseRepository {
+public class RTCTasksRepository extends NewBaseRepositoryImpl {
 
     public final static Logger LOGGER = Logger.getInstance(RTCTasksRepository.class);
+    private static final org.slf4j.Logger log = LoggerFactory.getLogger(RTCTasksRepository.class);
 
     private volatile RTCConnector rtcConnector = null;
     private final Map<Integer, TaskState> taskStateMapper = new HashMap<>();
     private final Map<String, TaskType> taskTypeMapper = new HashMap<>();
-    private String projectArea;
-
+    //private String projectArea;
+    private  RTCProject project;
     //MUST BE KEPT FOR XML DE-SERIERLIZE!!
     public RTCTasksRepository() {
         super();
@@ -67,10 +71,10 @@ public class RTCTasksRepository extends BaseRepository {
 
     public RTCTasksRepository(final RTCTasksRepository rtcTasksRepository) {
         super(rtcTasksRepository);
-        setProjectArea(rtcTasksRepository.getProjectArea());
+//        setProjectArea(rtcTasksRepository.getProjectArea());
         setProjectId(rtcTasksRepository.getProjectId());
-        initConnector();
-        setConversions();
+//        initConnector();
+//        setConversions();
     }
 
 
@@ -102,6 +106,16 @@ public class RTCTasksRepository extends BaseRepository {
             final String username = getUsername();
             final String password = getPassword();
             rtcConnector =new RTCConnector(url, username, password);
+            if (StringUtil.isNotEmpty(projectId)) {
+                try {
+                    project= rtcConnector.getProject(projectId);
+                    
+                } catch (TeamRepositoryException e) {
+                    LOGGER.error("Couldn't find project ", e);
+                    //throw new RuntimeException(e);
+                }
+            }
+            
         }
     }
 
@@ -126,7 +140,7 @@ public class RTCTasksRepository extends BaseRepository {
         return connector.map(rtcConnector -> {
             final Task[] tasks1;
             try {
-                final RTCProject project = rtcConnector.getProject(projectId,progressMonitor);
+                final RTCProject project = this.fetchProject();// rtcConnector.getProject(projectId,progressMonitor);
                 if (isNumber(query)) {
                     final int id = Integer.parseInt(query);
                     try {
@@ -185,8 +199,8 @@ public class RTCTasksRepository extends BaseRepository {
             final RTCComment rtcComment = new RTCComment(content, contributorName);
             rtcComments[i] = rtcComment;
         }
-
-        return new RTCTask(workItem, rtcTaskType, rtcTaskState, rtcComments, projectArea);
+        
+        return new RTCTask(workItem, rtcTaskType, rtcTaskState, rtcComments,project.getProjectArea().getName(), this);
     }
 
     private boolean isNumber(final @Nullable String query) {
@@ -226,7 +240,12 @@ public class RTCTasksRepository extends BaseRepository {
 
     @Override
     public String extractId(String taskName) {
-        return RTCTask.getId(taskName);
+        if (taskName.startsWith(getRepositoryType().getName())){
+            return RTCTask.getId(taskName);
+        }else{
+            return null;
+        }
+        
     }
 
     @Override
@@ -259,25 +278,20 @@ public class RTCTasksRepository extends BaseRepository {
     public boolean hasParameters() {
         return StringUtil.isNotEmpty(this.getUsername())
                 && StringUtil.isNotEmpty(this.getPassword())
-                && StringUtils.isNotEmpty(this.getProjectArea())
+                //&& StringUtils.isNotEmpty(this.getProjectArea())
                 && StringUtil.isNotEmpty(this.getProjectId());
     }
 
     public Optional<RTCConnector> getConnector() {
         return Optional.ofNullable(rtcConnector);
     }
-
-    @Tag("projectArea")
-    public String getProjectArea() {
-        return projectArea;
+    
+    public RTCProject fetchProject() {
+        return project;
     }
-
-    public void setProjectArea(String projectArea) {
-        this.projectArea = projectArea;
-    }
-
+    
     private String projectId;
-
+    
     @Tag("projectUUID")
     public String getProjectId() {
         return projectId;
@@ -297,35 +311,12 @@ public class RTCTasksRepository extends BaseRepository {
         final Map<String,String> areas=allProject.stream().collect(Collectors.toMap(IProcessArea::getName, iProjectArea -> iProjectArea.getItemId().getUuidValue()));
         return areas;
     }
-
-    public void updateProjectId(String projectName) {
-        setProjectArea(projectName);
-        if (StringUtil.isNotEmpty(projectName)) {
-//            final String projectUid = projectMap.get(projectName);
-//            setProjectId(projectUid);
-        }else{
-            setProjectId("");
-        }
-    }
-
-    public void updateProjectUID() {
-        getConnector().ifPresent(rtcConnector -> {
-            final IProjectArea projectsBy;
-            try {
-                projectsBy = rtcConnector.getProjectsBy(RTCTasksRepository.this.projectArea);
-                final String uuidValue = projectsBy.getItemId().getUuidValue();
-                setProjectId(uuidValue);
-            } catch (TeamRepositoryException e) {
-                LOGGER.error("Problem updating project ",e);
-            }
-
-        });
-    }
+    
 
     @Override
     protected int getFeatures() {
         final int features = super.getFeatures()
-                | TaskRepository.TIME_MANAGEMENT
+                | TaskRepository.TIME_MANAGEMENT | TaskRepository.NATIVE_SEARCH
                 // | TaskRepository.STATE_UPDATING
 
                 ;
@@ -417,19 +408,17 @@ public class RTCTasksRepository extends BaseRepository {
 
 
     @Override
-    public boolean equals(final Object o) {
-        if (this == o) return true;
-        if (!(o instanceof RTCTasksRepository)) return false;
+    public boolean equals(Object o) {
+        if (!(o instanceof RTCTasksRepository that)) return false;
         if (!super.equals(o)) return false;
-
-        final RTCTasksRepository that = (RTCTasksRepository) o;
-
-        return getProjectArea() != null ? getProjectArea().equals(that.getProjectArea()) : that.getProjectArea() == null;
-
+         if(!Comparing.equal(getPassword(), that.getPassword())){
+             return false;
+        }
+         return Comparing.equal(getProjectId(), that.getProjectId());
     }
 
     @Override
     public int hashCode() {
-        return getProjectArea() != null ? getProjectArea().hashCode() : 0;
+        return Objects.hash(getPassword(),  getProjectId());
     }
 }
