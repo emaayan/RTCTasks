@@ -37,7 +37,12 @@ public class RTCTask extends Task {
         //return name;
         return extractNumberFromId( name);
     }
-    
+
+
+    @Override
+    public @NotNull String getNumber() {
+        return Integer.toString(iWorkItem.getId());
+    }
 
     @NotNull
     @Override
@@ -54,7 +59,7 @@ public class RTCTask extends Task {
     @NotNull
     @Override
     public String getPresentableId() {
-        return this.rtcTaskType.getDisplayName() + " " + getId();
+        return this.rtcTaskType.getDisplayName() + " " + getNumber();
     }
 
     @Override

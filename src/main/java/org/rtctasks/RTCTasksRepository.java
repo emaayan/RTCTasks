@@ -145,10 +145,10 @@ public class RTCTasksRepository extends NewBaseRepositoryImpl {
                     final int id = Integer.parseInt(query);
                     try {
                         final IWorkItem workItem = rtcConnector.getJazzWorkItemById(id, progressMonitor);
-                        if (workItem!=null) {
+                        if (workItem != null) {
                             final RTCTask workItemBy = getRtcTask(rtcConnector, project, workItem, progressMonitor);
                             tasks1 = new Task[]{workItemBy};
-                        }else{
+                        } else {
                             tasks1 = new Task[]{};
                         }
                     } catch (PermissionDeniedException e) {
@@ -156,16 +156,17 @@ public class RTCTasksRepository extends NewBaseRepositoryImpl {
                         return new Task[]{};
                     }
                 } else {
-                    final List<IWorkItem> workItemsBy = project.getWorkItemsBy(query,progressMonitor);
+                    final List<IWorkItem> workItemsBy = project.getWorkItemsBy(query, progressMonitor);
                     tasks1 = new Task[workItemsBy.size()];
                     for (int i = 0; i < workItemsBy.size(); i++) {
                         final IWorkItem iWorkItem = workItemsBy.get(i);
-                        tasks1[i] = getRtcTask(rtcConnector, project, iWorkItem,progressMonitor);
+                        tasks1[i] = getRtcTask(rtcConnector, project, iWorkItem, progressMonitor);
                     }
                 }
+            
             }catch (OperationCanceledException e){
                 throw new ProcessCanceledException(e);
-            } catch (TeamRepositoryException e) {
+            } catch (TeamRepositoryException  e) {
                 if (ExceptionUtil.causedBy(e, ClosedByInterruptException.class)) {
                     throw new ProcessCanceledException(e);
                 } else {
